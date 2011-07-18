@@ -1,0 +1,91 @@
+;; This package is a major mode for editing TWiki pages
+;; (http://twiki.org).  Twiki formatted pages are reformatted on
+;; import into a twiki buffer to enhance readibility and friendlier
+;; editing.  After editing, the pages are "exported" back to the twiki
+;; format.
+;; 
+;; The key benefits to twiki mode:
+;;
+;;   * Keyboard shortcuts for common operations 
+;;   * Auto-numbering of headings, numbered lists
+;;   * Better bullet list management
+;;   * orgtbl-minor mode for table editing
+;;   * table numbering
+;;   * font-lock support for syntax highlighting
+;;
+;; Typical usage:
+;;
+;;   1. In Web Browser, click edit in Twiki on the page to edit
+;;
+;;   2. Select all and copy to clipboard
+;;   
+;;   3. In emacs, twiki-mport-for-edit - assuming you are not already
+;;      in a buffer in twiki-mode, this will:
+;;         * create a temp file
+;;         * create buffer visiting that file,
+;;         * set the major mode to twiki-mode
+;;         * render the buffer for "editing", making bullet/lists more readable
+;;
+;;   4. Edit as necessary
+;;
+;;   5. Export to clipboard using C-c e (twiki-export-to-clipboard)
+;;
+;;   6. Back in Web Browser, Select All, and Paste from clipboard
+;;      (replacing old text)
+;;   
+;;   7. Optionally save the file elsewhere
+;;
+;; Interesting twiki-mode keys:
+;;    C-c h      Make current line a header line (asks for level, or prefix arg)
+;;    C-c 1-6    Make a Header 1-6 line
+;;    C-c C-h    Renumber all headers using 1.4.3 notation
+;;    C-c C-r    Renumber all headers and tables
+;;    C-c C-t    Renumber all tables
+;;    C-c i      Import clipboard
+;;    C-c e      Export to clipboard, rendering bullets/lists back to 
+;;               twiki format
+;;    Tab        Indent bullet list
+;;    S-Tab      Unindent bullet list
+;;
+;;; AUTO-NUMBERING OF HEADINGS
+;;
+;; On import or load of a twiki file, if headings were previously
+;; numbered, the numbering and min-level will automatically be
+;; detected.  If not, the user will be asked if headings should
+;; automatically be renumbered.  Setting a heading level sets the
+;; variable 'twiki-min-heading-level, and all subsequent renumbering
+;; will only affecting headings at that level up to
+;; 'twiki-max-heading-level.
+;;
+;; All headings are number using "1.2.3" notation, one additional level
+;; of decimal notation for each level deeper than 'twiki-min-heading level:
+;;
+;;   1. First level
+;;   1.1. Next level
+;;   1.2. Same level as above
+;;   2. Back to first level
+;;
+;;; AUTO-NUMBERING OF TABLES
+;;
+;; Table number simply looks for any line that matches "| *Table [0-9]+:".  The
+;; number matched is replaced with a simple sequence from the start of the file.
+;; 
+;;; INSTALLATION:
+;;
+;; Put this in your .emacs to associate "*.twiki" files with twiki-mode:
+;;
+;;   (add-to-list 'auto-mode-alist'("\\.twiki$" . twiki-mode))
+;;
+;;; KNOWN ISSUES:
+;;
+;;   - Two lists that are separated by a blank line in twiki syntax get munged
+;;     together as a single list by twiki-render-for-edit
+;;
+;;; TODO:
+;;
+;;   - Handle heading / table number references on renumber
+;;
+;;   - Cell-alignment with orgtbl is different than twiki as twiki uses amount of
+;;     spaces on either side of the content to align the cell.  orgtbl is a little smarter
+;;     about numbers vs not, and supports left or right alignment.  Unclear the best
+;;     way to combine the two.
