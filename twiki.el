@@ -5,6 +5,7 @@
 ;; Author: Christopher J. White <chris@grierwhite.com>
 ;; Maintainer: Christopher J. White <chris@grierwhite.com>
 ;; Keywords: twiki, wiki
+;; Last-modified: 2011-07-21
 
 ;; This program is free software: you can redistribute it and/or modify
 ;; it under the terms of the GNU General Public License as published by
@@ -73,11 +74,11 @@
 ;;
 ;; On import or load of a twiki file, if headings were previously
 ;; numbered, the numbering and min-level will automatically be
-;; detected.  If not, the user will be asked if headings should
-;; automatically be renumbered.  Setting a heading level sets the
-;; variable 'twiki-min-heading-level, and all subsequent renumbering
-;; will only affecting headings at that level up to
-;; 'twiki-max-heading-level.
+;; detected.  If not, the user must call 'twiki-setup-heading-numbers'
+;; to setup the minimum and maximum heading levels to be numbered.
+;; This sets the variables 'twiki-min-heading-level and
+;; twiki-max-heading-level.  All subsequent renumbering will only
+;; affecting headings between min and max inclusive.
 ;;
 ;; All headings are number using "1.2.3" notation, one additional level
 ;; of decimal notation for each level deeper than 'twiki-min-heading level:
@@ -86,6 +87,50 @@
 ;;   1.1. Next level
 ;;   1.2. Same level as above
 ;;   2. Back to first level
+;;
+;;; TABLES USING ORGTBL
+;;
+;; Table editing is handled by orgtbl-mode (see Info topic of Org-mode).  Tables
+;; are added by simply inserting vertical bars as the beginning of the line, one
+;; vertical bar on each end of a row:
+;;
+;;    | *Header 1* | *Header 2* |
+;;
+;; With the cursor in a table line, the basic keys are as follows:
+;;
+;;   Tab       next cell, or if at the end of the row, advance to
+;;             next row, creating a new row if necessary
+;;
+;;   S-Tab     prev cell
+;;
+;;   Ret       move to next row in the same column, creating a row
+;;             if necessary
+;;
+;;   C-c C-c   Realign the table
+;;   
+;; Just type away in any cell.  On tab, realignment occurs, "beautifying" the table
+;; so all rows have the same columns.
+;;
+;;; COLSPAN
+;;
+;; Twiki tables support colspan by interpreting two adjacent vertical bars 
+;; as an extention of the previous column:
+;;
+;;   |  Col 1    | Col 2     |
+;;   |  Colspan 2 & 2       ||
+;;
+;; Unfortunately, orgtbl does not really do colspan and if the table is realigned
+;; (on Tab, for example), the table will be reformatted as follows:
+;;
+;;   |  Col 1         | Col 2     |
+;;   |  Colspan 2 & 2 |           |
+;;
+;; To get around this, put "<<" in the column that should be merged with the previous column.
+;; On export, any columns that have only "<<" as the cell text will get turned back 
+;; into "||" so that Twiki performs the appropriate colspan:
+;;
+;;   |  Col 1         | Col 2     |
+;;   |  Colspan 2 & 2 | <<        |
 ;;
 ;;; AUTO-NUMBERING OF TABLES
 ;;
@@ -111,8 +156,19 @@
 ;;     spaces on either side of the content to align the cell.  orgtbl is a little smarter
 ;;     about numbers vs not, and supports left or right alignment.  Unclear the best
 ;;     way to combine the two.
-;;     
-
+;;
+;;   - Better handling of colspan within twiki-mode
+;;
+;;; CHANGE LOG
+;; 
+;; 2011-07-19  (chris)
+;;   - First public release
+;;
+;; 2011-07-21  (chris)
+;;   - Eliminated the question to add numbering on import, added function
+;;     "twiki-setup-heading-numbers"
+;;   - Fixed twiki-electric-space so that it does not break table lines
+;;
 ;;;
 ;;; Code:
 ;;;
@@ -1065,6 +1121,26 @@ nFirst heading number (typically 1): ")
 
   (twiki-renumber-headings t)
 )
+
+;;  
+;; twiki-setup-heading-numbers
+;;
+(defun twiki-setup-heading-numbers ()
+  (interactive)
+  "Set the minimum and maximum levels for renumbering headings"
+  (if (not twiki-min-heading-level)
+      (setq twiki-min-heading-level 1))
+  (setq twiki-min-heading-level
+        (string-to-number (read-string "Min heading level [1-6]: " 
+                                       (int-to-string twiki-min-heading-level))))
+  (if (not twiki-max-heading-level)
+      (setq twiki-max-heading-level 6))
+  (setq twiki-max-heading-level
+        (string-to-number (read-string "Max heading level [1-6]: " 
+                                       (int-to-string twiki-max-heading-level))))
+  (when (y-or-n-p "Renumber the docment now? ")
+    (twiki-renumber-headings))
+  )
   
 ;;
 ;; twiki-renumber-headings
@@ -1077,18 +1153,9 @@ Headings are prefixed with 1.1.1 notation."
   (save-excursion
     (goto-char (point-min))
     (when twiki-debug (message "twiki-renumber-headings"))
-     (if (and (null twiki-start-heading-number)
-              (not silent)
-              (y-or-n-p "Document headers are not currently numbered, add numbers? "))
-         (progn 
-           (setq twiki-start-heading-number 1)
-           (setq twiki-min-heading-level 
-                 (string-to-number (read-string "Min heading level [1-6]: (default 1) " nil nil "1")))
-           )
-       )
-    (when (null twiki-heading-base-string)
-      (setq twiki-heading-base-string ""))
     (unless (null twiki-start-heading-number)
+      (when (null twiki-heading-base-string)
+        (setq twiki-heading-base-string ""))
       (let ((is-first t))
         (twiki-renumber-headings-internal nil twiki-heading-base-string)
         )
@@ -1182,7 +1249,8 @@ Headings are prefixed with 1.1.1 notation."
   (let ((syntax (twiki-line-syntax))
         (prev-syntax (twiki-prev-line-syntax)))
     (cond
-     ((eq (car syntax) 'twiki-syntax-block)
+     ((or (eq (car syntax) 'twiki-syntax-block)
+          (eq (car syntax) 'twiki-syntax-table-line))
       (call-interactively 'self-insert-command)
       )
 
