@@ -601,6 +601,8 @@ lists, making them more readable for display and editing."
       (replace-match "| << |")
       (backward-char) ; to ensure we find multiple colspan cells: "|||"
       )
+
+    (not-modified)
     (message "Twiki - Done")
     )
   )
