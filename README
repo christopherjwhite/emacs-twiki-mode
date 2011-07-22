@@ -47,6 +47,9 @@
 ;;    Tab        Indent bullet list
 ;;    S-Tab      Unindent bullet list
 ;;
+;; When saving the buffer to a file, the format is saved as twiki-format (the buffer is
+;; rendered for export, then saved).
+;; 
 ;;; AUTO-NUMBERING OF HEADINGS
 ;;
 ;; On import or load of a twiki file, if headings were previously
@@ -113,12 +116,38 @@
 ;;
 ;; Table number simply looks for any line that matches "| *Table [0-9]+:".  The
 ;; number matched is replaced with a simple sequence from the start of the file.
-;; 
+;;
+;;
 ;;; INSTALLATION:
 ;;
 ;; Put this in your .emacs to associate "*.twiki" files with twiki-mode:
 ;;
 ;;   (add-to-list 'auto-mode-alist'("\\.twiki$" . twiki-mode))
+;;
+;;; FIREFOX ITS-ALL-TEXT ADDON INTEGRATION
+;;
+;; Firefox supports "It's All Text!", a plug-in that will allow using emacs (or
+;; any editor) to edit the contents of text areas.
+;;
+;;   1. Install the add-on from: https://addons.mozilla.org/en-US/firefox/addon/its-all-text/
+;;
+;;   2. Setup the auto-mode-alist for ".twiki" above
+;;
+;;   3. Right-click in a text area in Firefox, select It's All Text -> Preferences
+;;
+;;   4. Configure the editor to be "emacsclient", whereever that is on your system
+;; 
+;;   5. Add ".twiki" to the list of file extensions.  If you put it first, all text 
+;;      areas will default to .twiki when pressing the hot key or clicking the "Edit" button
+;;
+;; Note, on Windows if you have emacs installed and you get errors
+;; about not finding the socket, you may need to specify the full path
+;; to the server socket file that is used by the emacs server you're using.  
+;; This would have to go into a ".bat" file that in turn calls emacsclient
+;; with the additional "--server-file=<>" argument, as that can't be put in
+;; the editor command in the Its-All-Text preferences.
+;;
+;; To get your server-file, try: (process-get server-process :server-file)
 ;;
 ;;; KNOWN ISSUES:
 ;;
@@ -146,3 +175,6 @@
 ;;     "twiki-setup-heading-numbers"
 ;;   - Fixed twiki-electric-space so that it does not break table lines
 ;;
+;; 2011-07-22  (chris)
+;;   - Fixed bugs with renumbering and non-TOC headers containing "!!"
+;;   - Added supported for file-save to write twiki-format

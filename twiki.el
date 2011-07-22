@@ -70,6 +70,9 @@
 ;;    Tab        Indent bullet list
 ;;    S-Tab      Unindent bullet list
 ;;
+;; When saving the buffer to a file, the format is saved as twiki-format (the buffer is
+;; rendered for export, then saved).
+;; 
 ;;; AUTO-NUMBERING OF HEADINGS
 ;;
 ;; On import or load of a twiki file, if headings were previously
@@ -136,12 +139,38 @@
 ;;
 ;; Table number simply looks for any line that matches "| *Table [0-9]+:".  The
 ;; number matched is replaced with a simple sequence from the start of the file.
-;; 
+;;
+;;
 ;;; INSTALLATION:
 ;;
 ;; Put this in your .emacs to associate "*.twiki" files with twiki-mode:
 ;;
 ;;   (add-to-list 'auto-mode-alist'("\\.twiki$" . twiki-mode))
+;;
+;;; FIREFOX ITS-ALL-TEXT ADDON INTEGRATION
+;;
+;; Firefox supports "It's All Text!", a plug-in that will allow using emacs (or
+;; any editor) to edit the contents of text areas.
+;;
+;;   1. Install the add-on from: https://addons.mozilla.org/en-US/firefox/addon/its-all-text/
+;;
+;;   2. Setup the auto-mode-alist for ".twiki" above
+;;
+;;   3. Right-click in a text area in Firefox, select It's All Text -> Preferences
+;;
+;;   4. Configure the editor to be "emacsclient", whereever that is on your system
+;; 
+;;   5. Add ".twiki" to the list of file extensions.  If you put it first, all text 
+;;      areas will default to .twiki when pressing the hot key or clicking the "Edit" button
+;;
+;; Note, on Windows if you have emacs installed and you get errors
+;; about not finding the socket, you may need to specify the full path
+;; to the server socket file that is used by the emacs server you're using.  
+;; This would have to go into a ".bat" file that in turn calls emacsclient
+;; with the additional "--server-file=<>" argument, as that can't be put in
+;; the editor command in the Its-All-Text preferences.
+;;
+;; To get your server-file, try: (process-get server-process :server-file)
 ;;
 ;;; KNOWN ISSUES:
 ;;
@@ -169,6 +198,9 @@
 ;;     "twiki-setup-heading-numbers"
 ;;   - Fixed twiki-electric-space so that it does not break table lines
 ;;
+;; 2011-07-22  (chris)
+;;   - Fixed bugs with renumbering and non-TOC headers containing "!!"
+;;   - Added supported for file-save to write twiki-format
 ;;;
 ;;; Code:
 ;;;
@@ -266,7 +298,7 @@
   (define-key twiki-mode-map (read-kbd-macro "C-c /") 'twiki-italic)
   (define-key twiki-mode-map (read-kbd-macro "C-c C-h") 'twiki-renumber-headings)
   (define-key twiki-mode-map (read-kbd-macro "C-c C-r") 'twiki-renumber-all)
-  (define-key twiki-mode-map (read-kbd-macro "C-c C-h") 'twiki-renumber-tables)
+  (define-key twiki-mode-map (read-kbd-macro "C-c C-t") 'twiki-renumber-tables)
   (define-key twiki-mode-map (read-kbd-macro "C-c 1") 'twiki-heading-1)
   (define-key twiki-mode-map (read-kbd-macro "C-c 2") 'twiki-heading-2)
   (define-key twiki-mode-map (read-kbd-macro "C-c 3") 'twiki-heading-3)
@@ -355,8 +387,9 @@ This function ends by invoking the function(s) `twiki-mode-hook'.
 
   (run-hooks 'twiki-mode-hook)
 
+  (add-hook 'before-save-hook (lambda () (when (eq major-mode 'twiki-mode) (twiki-render-for-export))))
+  (add-hook 'after-save-hook (lambda () (when (eq major-mode 'twiki-mode) (twiki-render-for-edit))))
   (turn-on-orgtbl)
-  ;;(flyspell-mode 1)
   )
 
 ;;
@@ -368,17 +401,18 @@ This function ends by invoking the function(s) `twiki-mode-hook'.
   (beginning-of-line)
   (let ((hs (make-string level ?+)))
     (cond 
-     ((looking-at "^---\\(\++\\) *\\(.*?\\)$")
-      (let ((s (match-string 2)))
-        (replace-match (format "---%s %s" hs s))
+     ((looking-at "^---\\(\++\\)\\(!*\\) *\\(.*?\\)$")
+      (let ((s (match-string 3))
+            (b (match-string 2)))
+        (replace-match (format "---%s%s %s" hs b s))
         ))
 
      ((looking-at "^\\(.*\\)$")
       (let ((s (match-string 1)))
         (replace-match (format "---%s %s" hs s))
         ))
-     )
-    (beginning-of-line)
+      )
+     (beginning-of-line)
     (forward-char (+ 4 level)))
   (twiki-renumber-headings)
   )
@@ -462,7 +496,7 @@ lists.  In addition, Twiki does not allow indentation of continuation lines.
 "
 
   ;; Things to do in the active buffer that should persist
-  (twiki-renumber-headings t)
+  (twiki-renumber-headings)
 
   ;; Things to do only in the temp buffer that is relevant to twiki format only
   (let ((buf (get-buffer-create (format "*twiki-%s*" (buffer-name))))
@@ -472,7 +506,7 @@ lists.  In addition, Twiki does not allow indentation of continuation lines.
       (set-buffer buf)
       (erase-buffer)
       (insert-string text)
-      (twiki-renumber-list nil)
+      (twiki-render-for-export)
       (set-buffer buf)
       (beginning-of-buffer)
       (clipboard-kill-ring-save (point-min) (point-max))
@@ -534,31 +568,60 @@ lists, making them more readable for display and editing."
           )
         )
       )
+    
+    (when twiki-debug (message "Processing local variabls"))
+    ;; Read any local-variables that may be specified in the text
+    (hack-local-variables)
+    
+    ;; If were already in twiki-mode, renumber to twiki, then back to 
+    ;; numbers
+    (message "Twiki - Renumbering lists...")
+    (if (and (eq major-mode 'twiki-mode)
+             (not twiki-importing))
+        (twiki-renumber-list nil))
+    (twiki-renumber-list t)
+    
+    ;; Renumber headings
+    (message "Twiki - Renumbering heading...")
+    (twiki-renumber-headings)
+    
+    (message "Twiki - Renumbering tables...")
+    (twiki-renumber-tables)
+    
+    ;; Tables in twiki support colspan by adjacent bars "||".  This doesn't work well with
+    ;; orgtbl minor mode because it wants to reformat all columns to the same width.
+    ;; So, reformat colspan cells with "| << |" to mark them as spanned with the cell to the 
+    ;; left.  On export, these cells will be converted back to "||"
+    (goto-char (point-min))
+    (message "Twiki - Reformatting tables...")
+    (while (re-search-forward "||" nil t)
+      (replace-match "| << |")
+      (backward-char) ; to ensure we find multiple colspan cells: "|||"
+      )
+    (message "Twiki - Done")
     )
+  )
 
-  (when twiki-debug (message "Processing local variabls"))
-  ;; Read any local-variables that may be specified in the text
-  (hack-local-variables)
-
-  ;; If were already in twiki-mode, renumber to twiki, then back to 
-  ;; numbers
-  (if (and (eq major-mode 'twiki-mode)
-           (not twiki-importing))
-      (twiki-renumber-list nil))
-  (twiki-renumber-list t)
-
-  ;; Renumber headings
-  (twiki-renumber-headings)
-
-  ;; Tables in twiki support colspan by adjacent bars "||".  This doesn't work well with
-  ;; orgtbl minor mode because it wants to reformat all columns to the same width.
-  ;; So, reformat colspan cells with "| << |" to mark them as spanned with the cell to the 
-  ;; left.  On export, these cells will be converted back to "||"
-  (goto-char (point-min))
-  (while (re-search-forward "||" nil t)
-    (replace-match "| << |")
-    (backward-char) ; to ensure we find multiple colspan cells: "|||"
+;;
+;; twiki-render-for-export - render the current buffer as twiki export format
+;;
+(defun twiki-render-for-export ()
+  (save-excursion
+    (goto-char (point-min))
+    (message "Twiki export - renumbering lists")
+    (twiki-renumber-list nil)
+    ;; Tables in twiki support colspan by adjacent bars "||".  This doesn't work well with
+    ;; orgtbl minor mode because it wants to reformat all columns to the same width.
+    ;; So, reformat colspan cells with "| << |" to mark them as spanned with the cell to the 
+    ;; left.  On export, these cells will be converted back to "||"
+    (message "Twiki export - reformatting tables")
+    (goto-char (point-min))
+    (while (re-search-forward "| *<< *|" nil t)
+      (replace-match "||")
+      (backward-char) ;e to ensure we find multiple colspan cells: "| << | << |"
+      )
     )
+  (message "Twiki export - Done")
   )
 
 ;;
@@ -1119,7 +1182,7 @@ nFirst heading number (typically 1): ")
   (setq twiki-start-heading-number start-num)
   (setq twiki-heading-base-string base-str)
 
-  (twiki-renumber-headings t)
+  (twiki-renumber-headings)
 )
 
 ;;  
@@ -1145,7 +1208,7 @@ nFirst heading number (typically 1): ")
 ;;
 ;; twiki-renumber-headings
 ;;
-(defun twiki-renumber-headings (&optional silent)
+(defun twiki-renumber-headings ()
   (interactive)
   "Renumber all headings in the document up to and including twiki-max-heading-level. 
 Headings are prefixed with 1.1.1 notation."
@@ -1161,7 +1224,6 @@ Headings are prefixed with 1.1.1 notation."
         )
       )
     )
-  (twiki-renumber-tables)
   )
 
 ;;
@@ -1189,15 +1251,23 @@ Headings are prefixed with 1.1.1 notation."
 
     (if (null num-str) (setq num-str ""))
 
+    ;; !!!
     (while (and (not done)
                 (re-search-forward 
-                 (format "^---\\(\\++\\)!*\\( *\\(%s\\)?\\([.0-9]+\\. *\\)?\\)\\(.*\\) *"
+                 (format "^---\\(\\++\\)\\(!*\\)\\( *\\(%s\\)?\\([.0-9]+\\. *\\)?\\)\\(.*\\) *"
                          twiki-heading-base-string)
-                 nil t))
+                 nil t)
+                )
+      (when twiki-debug (message "line: %s (!! match: %s)" (match-string 0) (match-string 2)))
       (let ((match-level (length (match-string 1))))
         (cond
+         ((> (length (match-string 2)) 0)
+          (when twiki-debug (message "skipping header line with !!"))
+          )
+
          ((> match-level level)
           
+          (when twiki-debug (message "descending to deeper level"))
           (beginning-of-line)
           (twiki-renumber-headings-internal  (1+ level) num-str))
          
@@ -1206,12 +1276,12 @@ Headings are prefixed with 1.1.1 notation."
           (setq done t))
          
          (t
-          (when twiki-debug (message "heading: %d - %s" match-level (match-string 5)))
+          (when twiki-debug (message "heading: %d - %s" match-level (match-string 6)))
           
           (cond 
            ((or (< level twiki-min-heading-level)
                 (> level twiki-max-heading-level))
-            (replace-match " " nil nil nil 2)
+            (replace-match " " nil nil nil 3)
             )
            
            (t
@@ -1222,7 +1292,7 @@ Headings are prefixed with 1.1.1 notation."
                       num twiki-start-heading-number)) 
             (when twiki-debug (message "renumbering to %S %S" parent-base num))
             (setq num-str (format "%s%d." parent-base num))
-            (replace-match (format " %s " num-str)  nil nil nil 2))
+            (replace-match (format " %s " num-str)  nil nil nil 3))
            )
           
           (end-of-line)
