@@ -204,6 +204,11 @@
 ;;
 ;; 2011-07-22  (chris)
 ;;   - Fixed hang on export on a bullet list with an empty bullet
+;;
+;; 2011-07-22  (chris)
+;;   - Fixed a bug with list numbering of alphanumeric lists (1., A.)
+;;
+
 ;;;
 ;;; Code:
 ;;;
@@ -800,19 +805,17 @@ for display).  Otherwise list numbers are stripped to '-' for twiki synatax.
                   (cond
                    ((string= "*" bulletstr) "*")
                      
-                   ((not to-numbers) "-")
-                     
                    ((string-match "^[0-9]+" bulletstr)
-                    (twiki-format-number num "1"))
+                    (if to-numbers (twiki-format-number num "1") "1."))
                   
                    ((string-match "^[xvi]+." bulletstr)
-                    (twiki-format-number num "i"))
+                    (if to-numbers (twiki-format-number num "i") "i."))
                    
                    ((string-match "^[a-h]." bulletstr)
-                    (twiki-format-number num "a"))
+                    (if to-numbers (twiki-format-number num "a") "a."))
                    
                    ((string-match "^[A-H]." bulletstr)
-                    (twiki-format-number num "A"))
+                    (if to-numbers (twiki-format-number num "A") "A."))
 
                    (t
                     (twiki-format-number num (substring "1Aai1111" parent-depth 
