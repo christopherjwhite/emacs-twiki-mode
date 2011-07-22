@@ -201,6 +201,9 @@
 ;; 2011-07-22  (chris)
 ;;   - Fixed bugs with renumbering and non-TOC headers containing "!!"
 ;;   - Added supported for file-save to write twiki-format
+;;
+;; 2011-07-22  (chris)
+;;   - Fixed hang on export on a bullet list with an empty bullet
 ;;;
 ;;; Code:
 ;;;
@@ -761,11 +764,12 @@ for display).  Otherwise list numbers are stripped to '-' for twiki synatax.
       (looking-at "^.*$")
       (message "twiki-renumber-cur-list: %s" (match-string 0)))
 
-    (while (and (looking-at
-                 ;; Looks for parent-depth followed by twiki-bullet-regex
-                 (format "^\\(%s +\\)%s\\( +\\)\\S .*$" 
-                         (make-string parent-indent ? ) twiki-bullet-regex))
-                )
+    (while (looking-at
+            ;; Looks for parent-depth followed by twiki-bullet-regex
+            (format "^\\(%s +\\)%s\\( +\\)\\S *.*$" 
+                    (make-string parent-indent ? ) twiki-bullet-regex))
+      
+      (when twiki-debug (message "looking-at %s" (match-string 0)))
 
       (when (and (not start) 
                  to-numbers)
@@ -779,6 +783,8 @@ for display).  Otherwise list numbers are stripped to '-' for twiki synatax.
         (if (= cur-indent 0) (setq cur-indent this-indent))
 
         (if (null bulletstr) (setq bulletstr (match-string 2)))
+
+        (when twiki-debug (message "cur-indent %s, this-indent %s" cur-indent this-indent))
 
         (if (> this-indent cur-indent)
             ;; Handle sub-list
