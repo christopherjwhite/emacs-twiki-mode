@@ -50,73 +50,6 @@
 ;; When saving the buffer to a file, the format is saved as twiki-format (the buffer is
 ;; rendered for export, then saved).
 ;; 
-;;; AUTO-NUMBERING OF HEADINGS
-;;
-;; On import or load of a twiki file, if headings were previously
-;; numbered, the numbering and min-level will automatically be
-;; detected.  If not, the user must call 'twiki-setup-heading-numbers'
-;; to setup the minimum and maximum heading levels to be numbered.
-;; This sets the variables 'twiki-min-heading-level and
-;; twiki-max-heading-level.  All subsequent renumbering will only
-;; affecting headings between min and max inclusive.
-;;
-;; All headings are number using "1.2.3" notation, one additional level
-;; of decimal notation for each level deeper than 'twiki-min-heading level:
-;;
-;;   1. First level
-;;   1.1. Next level
-;;   1.2. Same level as above
-;;   2. Back to first level
-;;
-;;; TABLES USING ORGTBL
-;;
-;; Table editing is handled by orgtbl-mode (see Info topic of Org-mode).  Tables
-;; are added by simply inserting vertical bars as the beginning of the line, one
-;; vertical bar on each end of a row:
-;;
-;;    | *Header 1* | *Header 2* |
-;;
-;; With the cursor in a table line, the basic keys are as follows:
-;;
-;;   Tab       next cell, or if at the end of the row, advance to
-;;             next row, creating a new row if necessary
-;;
-;;   S-Tab     prev cell
-;;
-;;   Ret       move to next row in the same column, creating a row
-;;             if necessary
-;;
-;;   C-c C-c   Realign the table
-;;   
-;; Just type away in any cell.  On tab, realignment occurs, "beautifying" the table
-;; so all rows have the same columns.
-;;
-;;; COLSPAN
-;;
-;; Twiki tables support colspan by interpreting two adjacent vertical bars 
-;; as an extention of the previous column:
-;;
-;;   |  Col 1    | Col 2     |
-;;   |  Colspan 2 & 2       ||
-;;
-;; Unfortunately, orgtbl does not really do colspan and if the table is realigned
-;; (on Tab, for example), the table will be reformatted as follows:
-;;
-;;   |  Col 1         | Col 2     |
-;;   |  Colspan 2 & 2 |           |
-;;
-;; To get around this, put "<<" in the column that should be merged with the previous column.
-;; On export, any columns that have only "<<" as the cell text will get turned back 
-;; into "||" so that Twiki performs the appropriate colspan:
-;;
-;;   |  Col 1         | Col 2     |
-;;   |  Colspan 2 & 2 | <<        |
-;;
-;;; AUTO-NUMBERING OF TABLES
-;;
-;; Table number simply looks for any line that matches "| *Table [0-9]+:".  The
-;; number matched is replaced with a simple sequence from the start of the file.
-;;
 ;;
 ;;; INSTALLATION:
 ;;
@@ -149,6 +82,96 @@
 ;;
 ;; To get your server-file, try: (process-get server-process :server-file)
 ;;
+;;
+;;; CUSTOMIZATION
+;;
+;; M-x customize-group twiki
+;;
+;;
+;;; AUTO-NUMBERING OF HEADINGS
+;;
+;; On import or load of a twiki file, if headings were previously
+;; numbered, the numbering and min-level will automatically be
+;; detected.  If not, the user must call 'twiki-setup-heading-numbers'
+;; to setup the minimum and maximum heading levels to be numbered.
+;; This sets the variables 'twiki-min-heading-level and
+;; twiki-max-heading-level.  All subsequent renumbering will only
+;; affecting headings between min and max inclusive.
+;;
+;; All headings are number using "1.2.3" notation, one additional level
+;; of decimal notation for each level deeper than 'twiki-min-heading level:
+;;
+;;   1. First level
+;;   1.1. Next level
+;;   1.2. Same level as above
+;;   2. Back to first level
+;;
+;;
+;;; TABLES USING ORGTBL
+;;
+;; Table editing is handled by orgtbl-mode (see Info topic of Org-mode).  Tables
+;; are added by simply inserting vertical bars as the beginning of the line, one
+;; vertical bar on each end of a row:
+;;
+;;    | *Header 1* | *Header 2* |
+;;
+;; With the cursor in a table line, the basic keys are as follows:
+;;
+;;   Tab       next cell, or if at the end of the row, advance to
+;;             next row, creating a new row if necessary
+;;
+;;   S-Tab     prev cell
+;;
+;;   Ret       move to next row in the same column, creating a row
+;;             if necessary
+;;
+;;   C-c C-c   Realign the table
+;;   
+;; Just type away in any cell.  On tab, realignment occurs, "beautifying" the table
+;; so all rows have the same columns.
+;;
+;;
+;;; COLSPAN
+;;
+;; Twiki tables support colspan by interpreting two adjacent vertical bars 
+;; as an extention of the previous column:
+;;
+;;   |  Col 1    | Col 2     |
+;;   |  Colspan 2 & 2       ||
+;;
+;; Unfortunately, orgtbl does not really do colspan and if the table is realigned
+;; (on Tab, for example), the table will be reformatted as follows:
+;;
+;;   |  Col 1         | Col 2     |
+;;   |  Colspan 2 & 2 |           |
+;;
+;; To get around this, put "<<" in the column that should be merged with the previous column.
+;; On export, any columns that have only "<<" as the cell text will get turned back 
+;; into "||" so that Twiki performs the appropriate colspan:
+;;
+;;   |  Col 1         | Col 2     |
+;;   |  Colspan 2 & 2 | <<        |
+;;
+;;
+;;; COLUMN WIDTH SPECIFIERS 
+;;
+;; It's possible to specify column-width in orgbl as follows:
+;;
+;;   | <10>     |       | <20>               |
+;;   | *Name*   | *Age* | *Address*          |
+;;   | Christo=>| 25    | 1234 Really Long=> |
+;;
+;; (See org-table for more info on how this works and editing such fields)
+;;
+;; On export, this descriptor row is put in a comment block so it's hidden
+;; from view on the page.  On import again, the row is reinstated.
+;;
+;;
+;;; AUTO-NUMBERING OF TABLES
+;;
+;; Table number simply looks for any line that matches "| *Table [0-9]+:".  The
+;; number matched is replaced with a simple sequence from the start of the file.
+;;
 ;;; KNOWN ISSUES:
 ;;
 ;;   - Two lists that are separated by a blank line in twiki syntax get munged
@@ -163,7 +186,6 @@
 ;;     about numbers vs not, and supports left or right alignment.  Unclear the best
 ;;     way to combine the two.
 ;;
-;;   - Better handling of colspan within twiki-mode
 ;;
 ;;; CHANGE LOG
 ;; 
@@ -178,3 +200,19 @@
 ;; 2011-07-22  (chris)
 ;;   - Fixed bugs with renumbering and non-TOC headers containing "!!"
 ;;   - Added supported for file-save to write twiki-format
+;;
+;; 2011-07-22  (chris)
+;;   - Fixed hang on export on a bullet list with an empty bullet
+;;
+;; 2011-07-22  (chris)
+;;   - Fixed a bug with list numbering of alphanumeric lists (1., A.)
+;;
+;; 2011-07-29  (chris)
+;;   - Added support for orgtbl column-descriptor row, commenting out the line
+;;     on export, reinstating it on import
+;;
+;; 2011-07-31  (chris)
+;;   - cleaned up the code, made a 'twiki' customozation group
+;;   - added boolean for disabling orgtbl
+;;   - fixed faces so they work for light and dark background modes
+;;

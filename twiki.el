@@ -5,7 +5,8 @@
 ;; Author: Christopher J. White <chris@grierwhite.com>
 ;; Maintainer: Christopher J. White <chris@grierwhite.com>
 ;; Keywords: twiki, wiki
-;; Last-modified: 2011-07-21
+;; Last-modified: 2011-07-31
+;; Version 1.0
 
 ;; This program is free software: you can redistribute it and/or modify
 ;; it under the terms of the GNU General Public License as published by
@@ -73,73 +74,6 @@
 ;; When saving the buffer to a file, the format is saved as twiki-format (the buffer is
 ;; rendered for export, then saved).
 ;; 
-;;; AUTO-NUMBERING OF HEADINGS
-;;
-;; On import or load of a twiki file, if headings were previously
-;; numbered, the numbering and min-level will automatically be
-;; detected.  If not, the user must call 'twiki-setup-heading-numbers'
-;; to setup the minimum and maximum heading levels to be numbered.
-;; This sets the variables 'twiki-min-heading-level and
-;; twiki-max-heading-level.  All subsequent renumbering will only
-;; affecting headings between min and max inclusive.
-;;
-;; All headings are number using "1.2.3" notation, one additional level
-;; of decimal notation for each level deeper than 'twiki-min-heading level:
-;;
-;;   1. First level
-;;   1.1. Next level
-;;   1.2. Same level as above
-;;   2. Back to first level
-;;
-;;; TABLES USING ORGTBL
-;;
-;; Table editing is handled by orgtbl-mode (see Info topic of Org-mode).  Tables
-;; are added by simply inserting vertical bars as the beginning of the line, one
-;; vertical bar on each end of a row:
-;;
-;;    | *Header 1* | *Header 2* |
-;;
-;; With the cursor in a table line, the basic keys are as follows:
-;;
-;;   Tab       next cell, or if at the end of the row, advance to
-;;             next row, creating a new row if necessary
-;;
-;;   S-Tab     prev cell
-;;
-;;   Ret       move to next row in the same column, creating a row
-;;             if necessary
-;;
-;;   C-c C-c   Realign the table
-;;   
-;; Just type away in any cell.  On tab, realignment occurs, "beautifying" the table
-;; so all rows have the same columns.
-;;
-;;; COLSPAN
-;;
-;; Twiki tables support colspan by interpreting two adjacent vertical bars 
-;; as an extention of the previous column:
-;;
-;;   |  Col 1    | Col 2     |
-;;   |  Colspan 2 & 2       ||
-;;
-;; Unfortunately, orgtbl does not really do colspan and if the table is realigned
-;; (on Tab, for example), the table will be reformatted as follows:
-;;
-;;   |  Col 1         | Col 2     |
-;;   |  Colspan 2 & 2 |           |
-;;
-;; To get around this, put "<<" in the column that should be merged with the previous column.
-;; On export, any columns that have only "<<" as the cell text will get turned back 
-;; into "||" so that Twiki performs the appropriate colspan:
-;;
-;;   |  Col 1         | Col 2     |
-;;   |  Colspan 2 & 2 | <<        |
-;;
-;;; AUTO-NUMBERING OF TABLES
-;;
-;; Table number simply looks for any line that matches "| *Table [0-9]+:".  The
-;; number matched is replaced with a simple sequence from the start of the file.
-;;
 ;;
 ;;; INSTALLATION:
 ;;
@@ -172,6 +106,96 @@
 ;;
 ;; To get your server-file, try: (process-get server-process :server-file)
 ;;
+;;
+;;; CUSTOMIZATION
+;;
+;; M-x customize-group twiki
+;;
+;;
+;;; AUTO-NUMBERING OF HEADINGS
+;;
+;; On import or load of a twiki file, if headings were previously
+;; numbered, the numbering and min-level will automatically be
+;; detected.  If not, the user must call 'twiki-setup-heading-numbers'
+;; to setup the minimum and maximum heading levels to be numbered.
+;; This sets the variables 'twiki-min-heading-level and
+;; twiki-max-heading-level.  All subsequent renumbering will only
+;; affecting headings between min and max inclusive.
+;;
+;; All headings are number using "1.2.3" notation, one additional level
+;; of decimal notation for each level deeper than 'twiki-min-heading level:
+;;
+;;   1. First level
+;;   1.1. Next level
+;;   1.2. Same level as above
+;;   2. Back to first level
+;;
+;;
+;;; TABLES USING ORGTBL
+;;
+;; Table editing is handled by orgtbl-mode (see Info topic of Org-mode).  Tables
+;; are added by simply inserting vertical bars as the beginning of the line, one
+;; vertical bar on each end of a row:
+;;
+;;    | *Header 1* | *Header 2* |
+;;
+;; With the cursor in a table line, the basic keys are as follows:
+;;
+;;   Tab       next cell, or if at the end of the row, advance to
+;;             next row, creating a new row if necessary
+;;
+;;   S-Tab     prev cell
+;;
+;;   Ret       move to next row in the same column, creating a row
+;;             if necessary
+;;
+;;   C-c C-c   Realign the table
+;;   
+;; Just type away in any cell.  On tab, realignment occurs, "beautifying" the table
+;; so all rows have the same columns.
+;;
+;;
+;;; COLSPAN
+;;
+;; Twiki tables support colspan by interpreting two adjacent vertical bars 
+;; as an extention of the previous column:
+;;
+;;   |  Col 1    | Col 2     |
+;;   |  Colspan 2 & 2       ||
+;;
+;; Unfortunately, orgtbl does not really do colspan and if the table is realigned
+;; (on Tab, for example), the table will be reformatted as follows:
+;;
+;;   |  Col 1         | Col 2     |
+;;   |  Colspan 2 & 2 |           |
+;;
+;; To get around this, put "<<" in the column that should be merged with the previous column.
+;; On export, any columns that have only "<<" as the cell text will get turned back 
+;; into "||" so that Twiki performs the appropriate colspan:
+;;
+;;   |  Col 1         | Col 2     |
+;;   |  Colspan 2 & 2 | <<        |
+;;
+;;
+;;; COLUMN WIDTH SPECIFIERS 
+;;
+;; It's possible to specify column-width in orgbl as follows:
+;;
+;;   | <10>     |       | <20>               |
+;;   | *Name*   | *Age* | *Address*          |
+;;   | Christo=>| 25    | 1234 Really Long=> |
+;;
+;; (See org-table for more info on how this works and editing such fields)
+;;
+;; On export, this descriptor row is put in a comment block so it's hidden
+;; from view on the page.  On import again, the row is reinstated.
+;;
+;;
+;;; AUTO-NUMBERING OF TABLES
+;;
+;; Table number simply looks for any line that matches "| *Table [0-9]+:".  The
+;; number matched is replaced with a simple sequence from the start of the file.
+;;
 ;;; KNOWN ISSUES:
 ;;
 ;;   - Two lists that are separated by a blank line in twiki syntax get munged
@@ -186,7 +210,6 @@
 ;;     about numbers vs not, and supports left or right alignment.  Unclear the best
 ;;     way to combine the two.
 ;;
-;;   - Better handling of colspan within twiki-mode
 ;;
 ;;; CHANGE LOG
 ;; 
@@ -208,6 +231,15 @@
 ;; 2011-07-22  (chris)
 ;;   - Fixed a bug with list numbering of alphanumeric lists (1., A.)
 ;;
+;; 2011-07-29  (chris)
+;;   - Added support for orgtbl column-descriptor row, commenting out the line
+;;     on export, reinstating it on import
+;;
+;; 2011-07-31  (chris) -- Version 1.0.0
+;;   - cleaned up the code, made a 'twiki' customozation group
+;;   - added boolean for disabling orgtbl
+;;   - fixed faces so they work for light and dark background modes
+;;
 
 ;;;
 ;;; Code:
@@ -222,17 +254,41 @@
 ;;; Configurable stuff
 ;;; ------------------------------------------------------------
 
-(defvar twiki-silent-import nil
-  "*If non-nil, import into a buffer already in twiki-mode will not ask above overwrite")
+(defcustom twiki-tab-width 3
+  "Spacing for bullet lists, etc."
+  :group 'twiki
+  :type '(integer)
+  )
 
-(defvar twiki-tab-width 4
-  "*Spacing for lists, etc.")
+(defcustom twiki-min-heading-level 1
+  "Min heading level to include for heading renumbering."
+  :group 'twiki
+  :type '(integer)
+  :options '(1 2 3 4 5 6)
+)
 
-(defvar twiki-min-heading-level 1
-  "*Min heading level to include for heading renumbering.")
+(defcustom twiki-max-heading-level 6
+  "*Max heading level to include for heading renumbering."
+  :group 'twiki
+  :type '(boolean)
+  :options '(1 2 3 4 5 6)
+)
 
-(defvar twiki-max-heading-level 6
-  "*Max heading level to include for heading renumbering.")
+(defcustom twiki-use-orgtbl t
+  "Set to nil to disable the use of orgtbl-minor mode for tables"
+  :group 'twiki
+  :type '(boolean)
+)
+
+(defcustom twiki-silent-import nil
+  "If non-nil, import into a buffer already in twiki-mode will not ask about overwrite"
+  :group 'twiki
+  :type '(boolean)
+  )
+
+;;
+;; Internal variables
+;;
 
 (defvar twiki-heading-base-string ""
   "*Base string to use for heading renumbering")
@@ -242,25 +298,28 @@
   "List of tags that delineate blocks that should not be parsed, such as <file> </file>"
 )
 
+(defvar twiki-kill-export-buffer t
+  "*If non-null, kill the export buffer when done exporting")
+
 (defvar twiki-font-lock-keywords
   (list
    (list "\\(:\\?:\\)"
 	 '(1 'highlight))
 
    (list "^\\(---\\+!* .*\\)"
-	 '(1 'twiki-heading-1-face))
+	 '(1 'twiki-heading-1))
 
    (list "^\\(---\\+\\+!* .*\\)"
-	 '(1 'twiki-heading-2-face))
+	 '(1 'twiki-heading-2))
 
    (list "^\\(---\\+\\+\\+!* .*\\)"
-	 '(1 'twiki-heading-3-face))
+	 '(1 'twiki-heading-3))
 
    (list "^\\(---\\+\\+\\+\\+!* .*\\)"
-	 '(1 'twiki-heading-4-face))
+	 '(1 'twiki-heading-4))
 
    (list "^\\(---\\+\\+\\+\\+\\+!* .*\\)"
-	 '(1 'twiki-heading-5-face))
+	 '(1 'twiki-heading-5))
 
    (list "\\(\\*\\b.*?\\b\\*\\)"
 	 '(1 'bold))
@@ -280,16 +339,11 @@
    )
   )
 
-(defvar twiki-kill-export-buffer t
-  "*If non-null, kill the export buffer when done exporting")
-
 (defvar twiki-debug nil
-  "*Set to non-null to generate debug messages when rendering, etc.")
+  "Set to non-null to generate debug messages when rendering, etc.")
 
 (defconst twiki-bullet-regex
   "\\([-*]\\|[0-9]+\\.\\|[a-zA-Z]\\.\\|i+\\.\\|iv\\.\\|v\\.\\)")
-
-;;; --- end of configuration ------------------
 
 (defvar twiki-importing nil)
 
@@ -321,60 +375,66 @@
   (define-key twiki-mode-map [tab] 'twiki-indent-line)
   (define-key twiki-mode-map [S-tab] 'twiki-unindent-line)
 
-  ;; Make menus.
   )
 
 (defvar twiki-mode-syntax-table nil)
 
-(if twiki-mode-syntax-table
-    ()
+(defvar twiki-mode-hook '())
+
+(unless twiki-mode-syntax-table
   (setq twiki-mode-syntax-table (make-syntax-table))
   (modify-syntax-entry ?\( "()    " twiki-mode-syntax-table)
   (modify-syntax-entry ?\) ")(    " twiki-mode-syntax-table)
   (modify-syntax-entry ?\{ "(}    " twiki-mode-syntax-table)  
   (modify-syntax-entry ?\} "){    " twiki-mode-syntax-table))
 
-
-;;; ------------------------------------------------------------
-;;; Internal variables.
-;;; You don't need to configure below this line.
-;;; ------------------------------------------------------------
-
-(defvar twiki-mode-hook '())
-
 ;;;###autoload
+
+(defgroup twiki nil "Group for twiki-mode related elements")
+
+(defface twiki-heading-1
+  '( (((class color) (background dark)) :foreground "yellow" :height 1.7 :inherit 'variable-pitch)
+     (((class color) (background light)) :foreground "OrangeRed" :height 1.7 :inherit 'variable-pitch) )
+  "Face for Twiki heading level 1"
+  :group 'twiki)
+
+(defface twiki-heading-2
+  '( (((class color) (background dark)) :foreground "yellow" :height 1.6 :inherit 'variable-pitch)
+     (((class color) (background light)) :foreground "OrangeRed" :height 1.6 :inherit 'variable-pitch) )
+  "Face for Twiki heading level 2"
+  :group 'twiki)
+    
+(defface twiki-heading-3
+  '( (((class color) (background dark)) :foreground "yellow" :height 1.4 :inherit 'variable-pitch)
+     (((class color) (background light)) :foreground "OrangeRed" :height 1.4 :inherit 'variable-pitch) )
+  "Face for Twiki heading level 3"
+  :group 'twiki)
+
+(defface twiki-heading-4
+  '( (((class color) (background dark)) :foreground "yellow" :height 1.2 :inherit 'variable-pitch)
+     (((class color) (background light)) :foreground "OrangeRed" :height 1.2 :inherit 'variable-pitch) )
+  "Face for Twiki heading level 4"
+  :group 'twiki)
+
+(defface twiki-heading-5
+  '( (((class color) (background dark)) :foreground "yellow" :underline t :inherit 'variable-pitch)
+     (((class color) (background light)) :foreground "OrangeRed" :underline t :inherit 'variable-pitch) )
+  "Face for Twiki heading level 5"
+  :group 'twiki)
+
 (defun twiki-mode ()
-  "Major mode for editing router TWIKI files.
+  "Major mode for editing Twiki files.
 This function ends by invoking the function(s) `twiki-mode-hook'.
 
 \\{twiki-mode-map}"
   (interactive)
   (kill-all-local-variables)
 
-  ;; Font lock.
-  (if t ;(not (facep 'twiki-heading-1-face))
-      (progn
-	(copy-face 'Info-title-1-face 'twiki-heading-1-face)
-	(set-face-foreground 'twiki-heading-1-face "yellow")
-
-	(copy-face 'Info-title-2-face 'twiki-heading-2-face)
-	(set-face-foreground 'twiki-heading-2-face "yellow")
-
-	(copy-face 'Info-title-3-face 'twiki-heading-3-face)
-	(set-face-foreground 'twiki-heading-3-face "yellow")
-
-	(copy-face 'Info-title-4-face 'twiki-heading-4-face)
-	(set-face-foreground 'twiki-heading-4-face "yellow")
-
-	(copy-face 'underline 'twiki-heading-5-face)
-	(set-face-foreground 'twiki-heading-5-face "yellow")
-
-	)
-    )
   (make-local-variable 'font-lock-defaults)
   (make-local-variable 'twiki-min-heading-level)
   (make-local-variable 'twiki-max-heading-level)
   (make-local-variable 'twiki-heading-base-string)
+  (make-local-variable 'twiki-start-heading-number)
 
   (setq twiki-start-heading-number nil)
 
@@ -393,11 +453,14 @@ This function ends by invoking the function(s) `twiki-mode-hook'.
 
   (twiki-render-for-edit)
 
-  (run-hooks 'twiki-mode-hook)
+  (add-hook 'before-save-hook
+            (lambda () (when (eq major-mode 'twiki-mode) (twiki-render-for-export))))
+  (add-hook 'after-save-hook
+            (lambda () (when (eq major-mode 'twiki-mode) (twiki-render-for-edit))))
 
-  (add-hook 'before-save-hook (lambda () (when (eq major-mode 'twiki-mode) (twiki-render-for-export))))
-  (add-hook 'after-save-hook (lambda () (when (eq major-mode 'twiki-mode) (twiki-render-for-edit))))
-  (turn-on-orgtbl)
+  (when twiki-use-orgtbl (turn-on-orgtbl))
+
+  (run-hooks 'twiki-mode-hook)
   )
 
 ;;
@@ -595,22 +658,38 @@ lists, making them more readable for display and editing."
     
     (message "Twiki - Renumbering tables...")
     (twiki-renumber-tables)
-    
-    ;; Tables in twiki support colspan by adjacent bars "||".  This doesn't work well with
-    ;; orgtbl minor mode because it wants to reformat all columns to the same width.
-    ;; So, reformat colspan cells with "| << |" to mark them as spanned with the cell to the 
-    ;; left.  On export, these cells will be converted back to "||"
-    (goto-char (point-min))
-    (message "Twiki - Reformatting tables...")
-    (while (re-search-forward "||" nil t)
-      (replace-match "| << |")
-      (backward-char) ; to ensure we find multiple colspan cells: "|||"
+   
+    (when twiki-use-orgtbl
+      
+      ;; Tables in twiki support colspan by adjacent bars "||".  This
+      ;; doesn't work well with orgtbl minor mode because it wants to
+      ;; reformat all columns to the same width.  So, reformat colspan
+      ;; cells with "| << |" to mark them as spanned with the cell to
+      ;; the left.  On export, these cells will be converted back to "||"
+   
+      (goto-char (point-min))
+      (message "Twiki - Reformatting tables...")
+      (while (re-search-forward "||" nil t)
+        (replace-match "| << |")
+        (backward-char) ; to ensure we find multiple colspan cells: "|||"
+        )
+      
+      ;; Recognized rows that declare table alignment and column width rows
+      ;;   <10>   no alignment defined, 10 chars width
+      ;;   <r10>  for right aligned, 10 chars width
+      ;;   <l10>  for lef aligned, 10 chars width
+      (goto-char (point-min))
+      (while (re-search-forward 
+              "^<!--\\( *|\\( *<[rl]?[0-9]+> *|\\| *|\\)+ *\\) orgtbl.*-->$" nil t)
+        (replace-match "\\1")
+        )
       )
-
-    (not-modified)
-    (message "Twiki - Done")
     )
+
+  (not-modified)
+  (message "Twiki - Done")
   )
+
 
 ;;
 ;; twiki-render-for-export - render the current buffer as twiki export format
@@ -620,15 +699,27 @@ lists, making them more readable for display and editing."
     (goto-char (point-min))
     (message "Twiki export - renumbering lists")
     (twiki-renumber-list nil)
-    ;; Tables in twiki support colspan by adjacent bars "||".  This doesn't work well with
-    ;; orgtbl minor mode because it wants to reformat all columns to the same width.
-    ;; So, reformat colspan cells with "| << |" to mark them as spanned with the cell to the 
-    ;; left.  On export, these cells will be converted back to "||"
-    (message "Twiki export - reformatting tables")
-    (goto-char (point-min))
-    (while (re-search-forward "| *<< *|" nil t)
-      (replace-match "||")
-      (backward-char) ;e to ensure we find multiple colspan cells: "| << | << |"
+
+    (when twiki-use-orgtbl
+
+      ;; Convert "| << | " form back to "||" to represent colspan
+      ;; (See above in render-for-edit)
+      
+      (message "Twiki export - reformatting tables")
+      (goto-char (point-min))
+      (while (re-search-forward "| *<< *|" nil t)
+        (replace-match "||")
+        (backward-char) ; be to ensure we find multiple colspan cells: "| << | << |"
+        )
+      
+      ;; Recognized rows that declare table alignment and column width rows
+      ;;   <10>   no alignment defined, 10 chars width
+      ;;   <r10>  for right aligned, 10 chars width
+      ;;   <l10>  for lef aligned, 10 chars width
+      (goto-char (point-min))
+      (while (re-search-forward "^\\( *|\\( *<[rl]?[0-9]+> *|\\| *|\\)+ *\\)$" nil t)
+        (replace-match "<!--\\1 orgtbl column formatting hints -->")
+        )
       )
     )
   (message "Twiki export - Done")
@@ -671,9 +762,13 @@ for display).  Otherwise list numbers are stripped to '-' for twiki synatax.
     (when twiki-debug (message "twiki-renumber-list: compressing continuation lines"))
     (goto-char (point-min))
     
+    (setq twiki-loop-count 0)
+
     (while (re-search-forward
             ;; Looks for bullet / list item line
-            (format "^\\(\\( \\)+\\(%s\\) \\).*$" twiki-bullet-regex)
+            (format "^\\(\\(%s\\)+\\(%s\\) \\).*$" 
+                    (make-string twiki-tab-width ? )
+                    twiki-bullet-regex)
             nil t)
       
       (unless (twiki-skip-past-blocks)
@@ -729,7 +824,9 @@ for display).  Otherwise list numbers are stripped to '-' for twiki synatax.
     
     (while (re-search-forward
             ;; Looks for any amount of white space followed by twiki-bullet-regex
-            (format "^\\(\\( \\)+\\(%s\\)\\( \\)\\).*$" twiki-bullet-regex)
+            (format "^\\(\\(%s\\)+\\(%s\\)\\( \\)\\).*$" 
+                    (make-string twiki-tab-width ? )
+                    twiki-bullet-regex)
             nil t)
     
       (when twiki-debug (message "twiki-renumber-list, continuing renumber"))
@@ -750,8 +847,12 @@ for display).  Otherwise list numbers are stripped to '-' for twiki synatax.
   (interactive "sFormat: ")
   "Renumber the current list starting at point until the end of nested lists."
 
+  (when (> (setq twiki-loop-count (1+ twiki-loop-count)) 10)
+    (error "Endless loop..."))
+              
   ;; Renumber
-  (when twiki-debug (message "twiki-renumber-cur-list: collapsing blank lines"))
+  (when twiki-debug (message "twiki-renumber-cur-list %s %s %s %s" 
+                             to-numbers parent-depth parent-indent add-newline))
   (beginning-of-line)
   (let ((cur-indent 0)
         cur-depth
@@ -773,8 +874,10 @@ for display).  Otherwise list numbers are stripped to '-' for twiki synatax.
 
     (while (looking-at
             ;; Looks for parent-depth followed by twiki-bullet-regex
-            (format "^\\(%s +\\)%s\\( +\\)\\S *.*$" 
-                    (make-string parent-indent ? ) twiki-bullet-regex))
+            (format "^\\(%s\\(?:%s\\)+\\)%s\\( +\\)\\S *.*$" 
+                    (make-string parent-indent ? ) 
+                    (make-string twiki-tab-width ? )
+                    twiki-bullet-regex))
       
       (when twiki-debug (message "looking-at %s" (match-string 0)))
 
@@ -1199,8 +1302,8 @@ nFirst heading number (typically 1): ")
 ;;  
 ;; twiki-setup-heading-numbers
 ;;
-(defun twiki-setup-heading-numbers ()
-  (interactive)
+(defun twiki-setup-heading-numbers (&optional ask)
+  (interactive "p")
   "Set the minimum and maximum levels for renumbering headings"
   (if (not twiki-min-heading-level)
       (setq twiki-min-heading-level 1))
@@ -1212,22 +1315,27 @@ nFirst heading number (typically 1): ")
   (setq twiki-max-heading-level
         (string-to-number (read-string "Max heading level [1-6]: " 
                                        (int-to-string twiki-max-heading-level))))
-  (when (y-or-n-p "Renumber the docment now? ")
+
+  (setq twiki-start-heading-number 1)
+  (when (or (not ask) (y-or-n-p "Renumber the document now? "))
     (twiki-renumber-headings))
   )
   
 ;;
 ;; twiki-renumber-headings
 ;;
-(defun twiki-renumber-headings ()
-  (interactive)
+(defun twiki-renumber-headings (&optional ask)
+  (interactive "p")
   "Renumber all headings in the document up to and including twiki-max-heading-level. 
 Headings are prefixed with 1.1.1 notation."
 
-  (save-excursion
-    (goto-char (point-min))
-    (when twiki-debug (message "twiki-renumber-headings"))
-    (unless (null twiki-start-heading-number)
+  (if (null twiki-start-heading-number)
+      (if ask (twiki-setup-heading-numbers))
+
+    (save-excursion
+      (goto-char (point-min))
+      (when twiki-debug (message "twiki-renumber-headings"))
+      
       (when (null twiki-heading-base-string)
         (setq twiki-heading-base-string ""))
       (let ((is-first t))
