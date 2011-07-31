@@ -2,8 +2,8 @@
 
 ;; Copyright (C) 2010, 2011 Christopher J. White
 
-;; Author: Christopher J. White <chris@grierwhite.com>
-;; Maintainer: Christopher J. White <chris@grierwhite.com>
+;; Author: Christopher J. White <twiki@grierwhite.com>
+;; Maintainer: Christopher J. White <twiki@grierwhite.com>
 ;; Keywords: twiki, wiki
 ;; Last-modified: 2011-07-31
 ;; Version 1.0
