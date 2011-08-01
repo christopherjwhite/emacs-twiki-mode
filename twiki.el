@@ -762,8 +762,6 @@ for display).  Otherwise list numbers are stripped to '-' for twiki synatax.
     (when twiki-debug (message "twiki-renumber-list: compressing continuation lines"))
     (goto-char (point-min))
     
-    (setq twiki-loop-count 0)
-
     (while (re-search-forward
             ;; Looks for bullet / list item line
             (format "^\\(\\(%s\\)+\\(%s\\) \\).*$" 
@@ -847,9 +845,6 @@ for display).  Otherwise list numbers are stripped to '-' for twiki synatax.
   (interactive "sFormat: ")
   "Renumber the current list starting at point until the end of nested lists."
 
-  (when (> (setq twiki-loop-count (1+ twiki-loop-count)) 10)
-    (error "Endless loop..."))
-              
   ;; Renumber
   (when twiki-debug (message "twiki-renumber-cur-list %s %s %s %s" 
                              to-numbers parent-depth parent-indent add-newline))
