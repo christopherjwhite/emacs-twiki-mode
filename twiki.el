@@ -71,8 +71,8 @@
 ;;    Tab        Indent bullet list
 ;;    S-Tab      Unindent bullet list
 ;;
-;; When saving the buffer to a file, the format is saved as twiki-format (the buffer is
-;; rendered for export, then saved).
+;; When saving the buffer to a file, the format is saved as
+;; twiki-format (the buffer is rendered for export, then saved).
 ;; 
 ;;
 ;;; INSTALLATION:
@@ -86,16 +86,20 @@
 ;; Firefox supports "It's All Text!", a plug-in that will allow using emacs (or
 ;; any editor) to edit the contents of text areas.
 ;;
-;;   1. Install the add-on from: https://addons.mozilla.org/en-US/firefox/addon/its-all-text/
+;;   1. Install the add-on from:
+;;      https://addons.mozilla.org/en-US/firefox/addon/its-all-text/
 ;;
 ;;   2. Setup the auto-mode-alist for ".twiki" above
 ;;
-;;   3. Right-click in a text area in Firefox, select It's All Text -> Preferences
+;;   3. Right-click in a text area in Firefox, select It's All Text ->
+;;      Preferences
 ;;
-;;   4. Configure the editor to be "emacsclient", whereever that is on your system
+;;   4. Configure the editor to be "emacsclient", whereever that is on
+;;      your system
 ;; 
-;;   5. Add ".twiki" to the list of file extensions.  If you put it first, all text 
-;;      areas will default to .twiki when pressing the hot key or clicking the "Edit" button
+;;   5. Add ".twiki" to the list of file extensions.  If you put it
+;;      first, all text areas will default to .twiki when pressing the
+;;      hot key or clicking the "Edit" button
 ;;
 ;; Note, on Windows if you have emacs installed and you get errors
 ;; about not finding the socket, you may need to specify the full path
@@ -151,8 +155,8 @@
 ;;
 ;;   C-c C-c   Realign the table
 ;;   
-;; Just type away in any cell.  On tab, realignment occurs, "beautifying" the table
-;; so all rows have the same columns.
+;; Just type away in any cell.  On tab, realignment occurs,
+;; "beautifying" the table so all rows have the same columns.
 ;;
 ;;
 ;;; COLSPAN
@@ -163,15 +167,17 @@
 ;;   |  Col 1    | Col 2     |
 ;;   |  Colspan 2 & 2       ||
 ;;
-;; Unfortunately, orgtbl does not really do colspan and if the table is realigned
-;; (on Tab, for example), the table will be reformatted as follows:
+;; Unfortunately, orgtbl does not really do colspan and if the table
+;; is realigned (on Tab, for example), the table will be reformatted
+;; as follows:
 ;;
 ;;   |  Col 1         | Col 2     |
 ;;   |  Colspan 2 & 2 |           |
 ;;
-;; To get around this, put "<<" in the column that should be merged with the previous column.
-;; On export, any columns that have only "<<" as the cell text will get turned back 
-;; into "||" so that Twiki performs the appropriate colspan:
+;; To get around this, put "<<" in the column that should be merged
+;; with the previous column.  On export, any columns that have only
+;; "<<" as the cell text will get turned back into "||" so that Twiki
+;; performs the appropriate colspan:
 ;;
 ;;   |  Col 1         | Col 2     |
 ;;   |  Colspan 2 & 2 | <<        |
@@ -205,10 +211,11 @@
 ;;
 ;;   - Handle heading / table number references on renumber
 ;;
-;;   - Cell-alignment with orgtbl is different than twiki as twiki uses amount of
-;;     spaces on either side of the content to align the cell.  orgtbl is a little smarter
-;;     about numbers vs not, and supports left or right alignment.  Unclear the best
-;;     way to combine the two.
+;;   - Cell-alignment with orgtbl is different than twiki as twiki
+;;     uses amount of spaces on either side of the content to align
+;;     the cell.  orgtbl is a little smarter about numbers vs not, and
+;;     supports left or right alignment.  Unclear the best way to
+;;     combine the two.
 ;;
 ;;
 ;;; CHANGE LOG
@@ -240,10 +247,10 @@
 ;;   - added boolean for disabling orgtbl
 ;;   - fixed faces so they work for light and dark background modes
 ;;
-
-;;;
-;;; Code:
-;;;
+;; 2011-09-03  (chris) -- Version 1.0.1
+;;   - fixed twiki-electric-space not to break links
+;;     of the form [[ref][title]] or [[ref]]
+;;
 
 (provide 'twiki)
 
@@ -255,7 +262,8 @@
 ;;; ------------------------------------------------------------
 
 (defcustom twiki-tab-width 3
-  "Spacing for bullet lists, etc."
+  "Spacing for bullet lists, etc.  Probably best to leave at 3 to match what 
+twiki expects."
   :group 'twiki
   :type '(integer)
   )
@@ -1467,7 +1475,21 @@ Headings are prefixed with 1.1.1 notation."
       (call-interactively 'self-insert-command)
       )
    
-     ;; Not looking at a new bullet, if past the fill-column, wrap and indent
+     ;; Check if cursor is in the middle of a link [[linkref][text]], and if so
+     ;; just insert a space
+     ((save-excursion
+        (let ((c (current-column)))
+          (beginning-of-line)
+          (if (looking-at ".*\\(\\[\\[.*\\]\\]\\)")
+              (progn 
+                (goto-char (match-end 1))
+                (< c (current-column)))
+            nil)))
+      (call-interactively 'self-insert-command)
+      )
+     
+     ;; Make sure user did not just insert a bullet that happens to be past the 
+     ;; fill column.  
      ((save-excursion 
         (if (looking-at "[^\n ]*")
             (goto-char (match-end 0)))
