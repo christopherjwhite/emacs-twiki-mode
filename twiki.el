@@ -1,13 +1,17 @@
 ;;; twiki.el --- mode for editing Twiki wiki files for emacs
 
-;; Copyright (C) 2010, 2011 Christopher J. White
+;; Copyright (C) 2010-2012 Christopher J. White
 
 ;; Author: Christopher J. White <twiki@grierwhite.com>
 ;; Maintainer: Christopher J. White <twiki@grierwhite.com>
 ;; Keywords: twiki, wiki
-;; Last-modified: 2011-07-31
-;; Version 1.0
+;; Last-modified: 2012-06-20
+;; Version 1.1
 
+;; GNU General Public License v3 (GNU GPL v3),
+;;
+;; This file is not part of GNU Emacs.
+;;
 ;; This program is free software: you can redistribute it and/or modify
 ;; it under the terms of the GNU General Public License as published by
 ;; the Free Software Foundation, either version 3 of the License, or (at
@@ -68,8 +72,13 @@
 ;;    C-c i      Import clipboard
 ;;    C-c e      Export to clipboard, rendering bullets/lists back to 
 ;;               twiki format
+;; Bullet lists:
 ;;    Tab        Indent bullet list
 ;;    S-Tab      Unindent bullet list
+;;
+;; Headings:
+;;    Tab        Hide/show direct subtree
+;;    S-Tab      Hide/show all subtrees
 ;;
 ;; When saving the buffer to a file, the format is saved as
 ;; twiki-format (the buffer is rendered for export, then saved).
@@ -251,11 +260,27 @@
 ;;   - fixed twiki-electric-space not to break links
 ;;     of the form [[ref][title]] or [[ref]]
 ;;
+;; 2012-05-14  (chris) -- Version 1.0.2
+;;   - Fixed twiki-electric-space so that it does not break headings
+;;
+;; 2012-05-19  (chris)
+;;   - Fixed handling of links so that they are not broken on save
+;;   - Added support for C-u C-c <num> to set a heading as invisible to the TOC
+;;   - Turn on outline-minor-mode and support [tab] and [S-tab] to toggle
+;;     visiblity of subtrees
+;;
+;; 2012-06-20  (chris) -- Version 1.1.0
+;;   - Better line break support when links are in a line
+;;   - Added `twiki-verbatim' [C-c v] to add <verbatim></verbatim> 
+;;     around a block
+;;
 
 (provide 'twiki)
 
 (require 'info)
 (require 'cl)
+
+(defconst twiki-version "1.1.0")
 
 ;;; ------------------------------------------------------------
 ;;; Configurable stuff
@@ -355,6 +380,8 @@ twiki expects."
 
 (defvar twiki-importing nil)
 
+(defvar twiki-subtree-closed nil)
+
 (defvar twiki-mode-map nil
   "The keymap that is used in this mode.")
 
@@ -378,11 +405,12 @@ twiki expects."
   (define-key twiki-mode-map (read-kbd-macro "C-c i") 'twiki-import-for-edit)
   (define-key twiki-mode-map (read-kbd-macro "C-c e") 'twiki-export-to-clipboard)
 
+  (define-key twiki-mode-map (read-kbd-macro "C-c v") 'twiki-verbatim)
+
   (define-key twiki-mode-map " " 'twiki-electric-space)
 
   (define-key twiki-mode-map [tab] 'twiki-indent-line)
   (define-key twiki-mode-map [S-tab] 'twiki-unindent-line)
-
   )
 
 (defvar twiki-mode-syntax-table nil)
@@ -398,7 +426,7 @@ twiki expects."
 
 ;;;###autoload
 
-(defgroup twiki nil "Group for twiki-mode related elements")
+(defgroup twiki nil "Group for twiki-mode related elements.")
 
 (defface twiki-heading-1
   '( (((class color) (background dark)) :foreground "yellow" :height 1.7 :inherit 'variable-pitch)
@@ -444,6 +472,10 @@ This function ends by invoking the function(s) `twiki-mode-hook'.
   (make-local-variable 'twiki-heading-base-string)
   (make-local-variable 'twiki-start-heading-number)
 
+  (outline-minor-mode)
+  (make-local-variable 'outline-regexp)
+  (setq outline-regexp "---\\++")
+
   (setq twiki-start-heading-number nil)
 
   (setq font-lock-defaults '(twiki-font-lock-keywords))
@@ -478,43 +510,44 @@ This function ends by invoking the function(s) `twiki-mode-hook'.
   "Insert a heading at the given level"
   (interactive "NLevel: ")
   (beginning-of-line)
-  (let ((hs (make-string level ?+)))
+  (let ((hs (make-string (abs level) ?+)))
     (cond 
-     ((looking-at "^---\\(\++\\)\\(!*\\) *\\(.*?\\)$")
-      (let ((s (match-string 3))
-            (b (match-string 2)))
-        (replace-match (format "---%s%s %s" hs b s))
+     ((looking-at (twiki-heading-regex))
+      (let ((text (match-string 6))
+            (base-num (if (< level 0) "" (match-string 3)))
+            (suppress (if (< level 0) "!!" (match-string 2))))
+        (replace-match (format "---%s%s%s %s" hs suppress base-num text))
         ))
-
+     
      ((looking-at "^\\(.*\\)$")
-      (let ((s (match-string 1)))
-        (replace-match (format "---%s %s" hs s))
+      (let ((s (or (match-string 1) "")))
+        (replace-match (format "---%s%s %s" hs (if (< level 0) "!!" "") s))
         ))
       )
-     (beginning-of-line)
-    (forward-char (+ 4 level)))
+    (beginning-of-line)
+    (forward-char (+ (if (< level 0) 6 4) (abs level))))
   (twiki-renumber-headings)
   )
   
-(defun twiki-heading-1 ()
-  (interactive)
-  (twiki-heading 1))
+(defun twiki-heading-1 (hide)
+  (interactive "P")
+  (twiki-heading (if hide -1 1)))
 
-(defun twiki-heading-2 ()
-  (interactive)
-  (twiki-heading 2))
+(defun twiki-heading-2 (hide)
+  (interactive "P")
+  (twiki-heading (if hide -2 2)))
 
-(defun twiki-heading-3 ()
-  (interactive)
-  (twiki-heading 3))
+(defun twiki-heading-3 (hide)
+  (interactive "P")
+  (twiki-heading (if hide -3 3)))
 
-(defun twiki-heading-4 ()
-  (interactive)
-  (twiki-heading 4))
+(defun twiki-heading-4 (hide)
+  (interactive "P")
+  (twiki-heading (if hide -4 4)))
 
-(defun twiki-heading-5 ()
-  (interactive)
-  (twiki-heading 5))
+(defun twiki-heading-5 (hide)
+  (interactive "P")
+  (twiki-heading (if hide -5 5)))
 
 ;;
 ;; twiki-bold
@@ -538,6 +571,26 @@ This function ends by invoking the function(s) `twiki-mode-hook'.
   (insert-string "_")
   (goto-char start)
   (insert-string "_")
+  )
+  
+;;
+;; twiki-verbatim
+;;
+(defun twiki-verbatim (start end)
+  "Makes the selected text italic"
+  (interactive "r")
+  (if mark-active
+      (progn 
+        (goto-char end)
+        (insert-string "</verbatim>")
+        (goto-char start)
+        (insert-string "<verbatim>\n")
+        )
+    (insert-string "\n</verbatim>")
+    (beginning-of-line)
+    (previous-line)
+    (insert-string "<verbatim>\n")
+    )
   )
   
 ;;
@@ -946,23 +999,59 @@ for display).  Otherwise list numbers are stripped to '-' for twiki synatax.
 
           ;; Split long lines
           (when to-numbers
-            (let ((save-pos (point-marker))
-                  eol (done nil))
+            (let ((bol (point-at-bol)) ;; beginning of line
+                  eol (done nil)       ;; end of line
+                  fc                   ;; fill-column
+                  (ic (+ 1 (length bulletstr) (length indent-str))))
               (end-of-line)
               (setq eol (point-marker))
               (while (and (not done) 
                           (> (current-column) fill-column))
                 (backward-char (- (current-column) fill-column))
-                (if (re-search-forward " +" eol t)
-                    (progn (replace-match 
-                            (format "\n %s" 
-                                    (make-string (+ (length bulletstr) 
-                                                    (length indent-str)) ? )))
-                           (end-of-line))
-                  (setq done t)
-                  )
-                (setq eol (point-marker))
-                )
+
+                ;; Cursor is now at the fill-column. 
+                (let ((fc (point))
+                      (lsf (save-excursion (re-search-forward "\\[\\[" eol t))) ;; link start forward
+                      (lef (save-excursion (re-search-forward "\\]\\]" eol t))) ;; link end forward
+                      (lsb (save-excursion (re-search-backward " *\\[\\[" bol t))) ;; link start backward
+                      (web (save-excursion (re-search-backward " +" bol t))) ;; word end backward
+                      (wef (save-excursion (re-search-forward " +" eol t))) ;; word end forward
+                      )
+                  (cond
+
+                   ;; Test for middle of a link
+                   ((and lef ;; end of link in front of us...
+                         (or (not lsf) ;; and there is no link start, 
+                             (> lsf lef)) ;; or its after the link end (a diff link)
+                         lsb) ;; and there's is a link start behind us
+
+                    ;; If the link start is at the indent column go to the end of the link
+                    ;; else go to the beginning of the link
+                    (cond
+                     ((> lsb (+ bol ic))
+                      (goto-char lsb)
+                      (re-search-forward " *" eol t))
+                     
+                     ((< lef eol)
+                      (goto-char lef)
+                      (re-search-forward " +" eol t))
+                     
+                     (t (setq done t))))
+                   
+                   ;; Go to end of word backward
+                   (t ;; (> web (+ bol ic))
+                    (goto-char web)
+                    (re-search-forward " *" eol t))
+                   )
+                  
+                  (unless done
+                    (replace-match 
+                     (format "\n%s" (make-string ic ? ))
+                     eol)
+                    (end-of-line)
+                    (setq eol (point-marker))
+                    (setq bol (point-at-bol)))))
+
               (end-of-line)
 
               ;; Blank line between bullets
@@ -987,6 +1076,18 @@ for display).  Otherwise list numbers are stripped to '-' for twiki synatax.
       )
     )
   )
+
+(defun twiki-skip-past-links (&optional rev)
+  "Move point to the end of a link if the point only if the point
+is in the middle of a link"
+  (let* ((p (point))
+        (le (re-search-forward "\\]\\]" (point-at-eol) t))
+        (be (re-search-backward "\\[\\[" p t)))
+    (if (and le (not be))
+        (if rev (goto-char be) (goto-char le))
+      (goto-char p))))
+
+
 
 ;;
 ;; twiki-format-number 
@@ -1082,11 +1183,19 @@ and turn on twiki-mode.  This obliterates the contents of the buffer."
       ;; Look at current line
       (beginning-of-line)
       (cond
+       ;; Heading
+       ((looking-at (twiki-heading-regex))
+        (setq 
+         start 0
+         text-start (- (match-beginning 6) (match-beginning 0))
+         syntax 'twiki-syntax-heading)
+        )
+
        ;; Link
        ((looking-at "^\\({{.*}}\\)$")
         (setq 
-         start (match-start 1)
-         text-start (match-start 1)
+         start (match-beginning 1)
+         text-start (match-beginning 1)
          syntax 'twiki-syntax-link)
         )
 
@@ -1181,6 +1290,21 @@ and turn on twiki-mode.  This obliterates the contents of the buffer."
       
     ;; Look at syntax of current / prev line to decide what to do
     (cond
+     ((eq cur-syn 'twiki-syntax-heading)
+      (goto-char cur-line)
+      (setq twiki-subtree-closed 
+            (save-excursion 
+              (beginning-of-line 2)
+              (if (get-char-property (point) 'invisible)
+                  t nil)))
+      (if unindent
+          (outline-toggle-children)
+        (if twiki-subtree-closed
+            (show-subtree)
+          (hide-subtree))
+        )
+      )
+
      ;; If current-line is in the middle of a block, do nothing but
      ;; tab-stops
      ((eq cur-syn 'twiki-syntax-block)
@@ -1375,10 +1499,7 @@ Headings are prefixed with 1.1.1 notation."
 
     ;; !!!
     (while (and (not done)
-                (re-search-forward 
-                 (format "^---\\(\\++\\)\\(!*\\)\\( *\\(%s\\)?\\([.0-9]+\\. *\\)?\\)\\(.*\\) *"
-                         twiki-heading-base-string)
-                 nil t)
+                (re-search-forward (twiki-heading-regex) nil t)
                 )
       (when twiki-debug (message "line: %s (!! match: %s)" (match-string 0) (match-string 2)))
       (let ((match-level (length (match-string 1))))
@@ -1442,7 +1563,9 @@ Headings are prefixed with 1.1.1 notation."
         (prev-syntax (twiki-prev-line-syntax)))
     (cond
      ((or (eq (car syntax) 'twiki-syntax-block)
-          (eq (car syntax) 'twiki-syntax-table-line))
+          (eq (car syntax) 'twiki-syntax-table-line)
+          (eq (car syntax) 'twiki-syntax-heading)
+          )
       (call-interactively 'self-insert-command)
       )
 
@@ -1529,3 +1652,14 @@ Headings are prefixed with 1.1.1 notation."
       )
     )
   )
+
+(defun twiki-heading-regex ()
+  "Returns a regex that matches a heading with the following groups defined:
+  1 - All '+' symbols representing heading depth
+  2 - '!!' or '' representing TOC suppression
+  3 - groups 4 + 5
+  4 - heading base string, if used
+  5 - heading numbering
+  6 - heading text"
+  (format "^---\\(\\++\\)\\(!*\\)\\( *\\(%s\\)?\\([.0-9]+\\. *\\)?\\)\\(.*\\) *"
+          twiki-heading-base-string))
