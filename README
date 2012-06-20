@@ -46,8 +46,13 @@
 ;;    C-c i      Import clipboard
 ;;    C-c e      Export to clipboard, rendering bullets/lists back to 
 ;;               twiki format
+;; Bullet lists:
 ;;    Tab        Indent bullet list
 ;;    S-Tab      Unindent bullet list
+;;
+;; Headings:
+;;    Tab        Hide/show direct subtree
+;;    S-Tab      Hide/show all subtrees
 ;;
 ;; When saving the buffer to a file, the format is saved as
 ;; twiki-format (the buffer is rendered for export, then saved).
@@ -228,5 +233,19 @@
 ;; 2011-09-03  (chris) -- Version 1.0.1
 ;;   - fixed twiki-electric-space not to break links
 ;;     of the form [[ref][title]] or [[ref]]
+;;
+;; 2012-05-14  (chris) -- Version 1.0.2
+;;   - Fixed twiki-electric-space so that it does not break headings
+;;
+;; 2012-05-19  (chris)
+;;   - Fixed handling of links so that they are not broken on save
+;;   - Added support for C-u C-c <num> to set a heading as invisible to the TOC
+;;   - Turn on outline-minor-mode and support [tab] and [S-tab] to toggle
+;;     visiblity of subtrees
+;;
+;; 2012-06-20  (chris) -- Version 1.1.0
+;;   - Better line break support when links are in a line
+;;   - Added `twiki-verbatim' [C-c v] to add <verbatim></verbatim> 
+;;     around a block
 ;;
 
