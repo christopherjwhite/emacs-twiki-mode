@@ -5,8 +5,8 @@
 ;; Author: Christopher J. White <twiki@grierwhite.com>
 ;; Maintainer: Christopher J. White <twiki@grierwhite.com>
 ;; Keywords: twiki, wiki
-;; Last-modified: 2012-06-20
-;; Version 1.1
+;; Last-modified: 2012-08-01
+;; Version 1.2
 
 ;; GNU General Public License v3 (GNU GPL v3),
 ;;
