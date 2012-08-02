@@ -1,0 +1,424 @@
+#!/bin/bash
+
+# Instructions:
+#
+# Create a file ~/.twikish with following config params:
+#  
+#   BASEURL="https://twiki.site.com"
+#   TWIKIWEB="TwikiWebName"
+#   USERNAME="user"
+#   PASSWORD="pass"
+#   MERGETOOL="kdiff3"
+#
+# Set the values as appropriate.  Password may be left off and the tool will
+# prompt.  Password must be specified for non-interative use, either in the 
+# config file or on the command line via -p|--password
+#
+# Where a local copy is downloaded, a .twiki directory is created to track
+# version info:
+#
+# For example:
+#   $ twikish up FooBar
+#
+# This this create the following files:
+#   ./FooBar.twiki             the twiki text to edit
+#   ./.twiki/FooBar.currev     file recording the web and version being edited
+#   ./.twiki/FooBar.twiki.r5   the original revision 5 of FooBar.twiki
+#
+
+BASEURL=""
+TWIKIWEB=""
+USERNAME=""
+PASSWORD=""
+
+# Mergetool must accept commands as follows: base mine theirs -o outfile
+# Works out of the box with "kdiff3"
+MERGETOOL=""
+CONFIG=$HOME/.twikish
+
+INTERACTIVE=1
+
+if [ -e "$CONFIG" ]; then
+    source $CONFIG
+else
+    echo "No config file found: $CONFIG"
+    exit 1
+fi
+
+usage()
+{
+    echo "twikish [options] <cmd> <file> <file> ..."
+    echo ""
+    echo "  options:"
+    echo "     -u|--user <username>      Set the username"
+    echo "     -p|--password <password>  Set the password"
+    echo "     -b|--baseurl <url>        Set the base url for the twiki site"
+    echo "     -w|--twikiweb <web>       Set the web"
+    echo "     -n                        Non-interactive, don't prompt for anything"
+    echo ""
+    echo "  commands:"
+    echo "     up|update                 Update to the latest from version on the server"
+    echo "     diff                      Diff the local copy against the server"
+    echo "     revert                    Revert any local changes to the server copy"
+    echo "     open                      Open the topic in a browser"
+    echo "     status                    Display the status of each file"
+    echo "     preview                   Upload local copy to the server in preview mode"
+    echo "     save                      Upload local copy and save as a new version"
+    echo "     cl|cleanup                Update to latest and cleanup extraneous files"
+    echo ""
+    exit 0
+}
+
+set_commonvars()
+{
+    topicfile=$1
+
+    dir=$(dirname $topicfile)
+    topic=$(basename -s .twiki $topicfile)
+
+    file=$dir/$topic.twiki
+    revfile=$dir/.twiki/$topic.currev
+
+    baserev=""
+    basefile=""
+    web=$TWIKIWEB
+    if [ -e $revfile ]; then
+        baserev=$(basename `cat $revfile`)
+        web=$(dirname `cat $revfile`)
+        basefile=$dir/.twiki/$topic.twiki.$baserev
+    fi
+}
+
+make_revfile()
+{
+    m_web=$1
+    m_rev=$2
+
+    echo "$m_web/$m_rev" > $revfile
+}
+
+get_topic()
+{
+    o_topicfile=$1
+    o_rev=$2
+
+    o_dir=$(dirname $o_topicfile)
+    o_topic=$(basename -s .twiki $o_topicfile)
+
+    if [ "$o_rev" != "" ]; then
+        revarg="&rev=$o_rev"
+    fi
+    
+    mkdir -p $o_dir/.twiki
+
+    get_rev
+    o_rev=$r_rev
+    o_file=$o_dir/.twiki/$o_topic.twiki.$o_rev
+
+    curl -S -s -u $USERNAME:$PASSWORD ${BASEURL}/twiki/bin/view/${web}/${o_topic}\?raw=text$revarg | \
+        sed 's/&#822[01];/"/g' | \
+        sed "s/&#821[67];/'/g" > $o_file
+}
+
+get_rev()
+{
+    r_rev=$(curl -S -s -u $USERNAME:$PASSWORD  ${BASEURL}/twiki/bin/view/${web}/${topic}\?raw=on | \
+        gawk '/patternRevInfo/ { print gensub("^.*patternRevInfo.*\\<(r[0-9]+).*$", "\\1", "");}')
+}
+
+update_topic()
+{
+    topicfile=$1
+    cleanup=$2
+
+    set_commonvars $topicfile
+
+    mkdir -p $dir/.twiki
+
+    get_topic $topicfile
+    latestrev=$o_rev
+    latestfile=$o_file
+
+    if [ "$cleanup" == "cleanup" ]; then
+        mv -f $latestfile $dir/.twiki/tmp
+        rm -f $topic.*
+        rm -f .$topic.*
+        rm -f $dir/.twiki/$topic.*
+        rm -f $file
+        mv $dir/.twiki/tmp $latestfile
+        cp $latestfile $file
+        make_revfile $web $latestrev
+        echo "$topicfile: Local copy $latestrev, all other revisions cleaned up"
+        return 0
+    fi
+    
+    if [ ! -e "$file" ]; then
+        cp $latestfile $file
+        make_revfile $web $latestrev
+        echo "$topicfile: retrieved version $latestrev"
+    elif [ "$latestrev" == "$baserev" ]; then
+        difffile=$file.diff
+        diff -U2 $latestfile $file > $difffile
+        if [ $? == 0 ]; then
+            rm -f $diffile
+            echo "$topicfile: Local copy $latestrev is latest and unchanged"
+            return 0
+        else
+            echo "$topicfile: Local copy $latestrev is latest but modified: $difffile"
+            return 1
+        fi
+    else
+        # Check if basefile is equal to latest (just did a commit?)
+        diff -U2 -B $file $latestfile >> /dev/null
+        if [ $? == 0 ]; then
+            update_topic $topicfile cleanup
+            return 0
+        fi
+
+        # See if basefile had uncommitted changes
+        if [ ! -e "$basefile" ]; then
+            get_topic $topicfile $baserev
+        fi
+
+        difffile=$file.diff
+        diff -U2 $basefile $file > $difffile
+        if [ $? == 0 ]; then
+            echo "$topicfile: Updating from $baserev to $latestrev"
+            rm -f $difffile $basefile
+            cp $latestfile $file
+            make_revfile $web $latestrev
+            return 0
+        else
+            if [ "$INTERACTIVE" == 0 ]; then
+                echo "$topicfile Local version $baserev was modified, run at command line to merge"
+                return 1
+            fi
+            echo "$topicfile: Local version $baserev was modified"
+            f1=$file.base.$baserev
+            f2=$file.mine.$baserev
+            f3=$file.latestfile.$latestrev
+            o=$file.merge.$latestrev
+            cp $basefile $f1
+            mv $file $f2
+            cp $latestfile $f3
+            yn="n"
+            if [ "$MERGETOOL" != "" ]; then
+                read -p "Merge (y/n)? " yn
+            fi
+            if [ "$yn" == "y" ]; then
+                rm $difffile
+                $MERGETOOL $f1 $f2 $f3 -o $o
+                read -p "Resolve? (y/n)? " yn
+                if [ "$yn" == "y" ]; then
+                    rm -f $difffile $basefile $f1 $f2 $f3
+                    mv $o $file
+                    make_revfile $web $latestrev
+                else
+                    echo "Merge result: $o"
+                fi
+            else
+                echo "Local version $baserev was modified, merge manually:"
+                echo "  Common base:   $file.base.$baserev"
+                echo "  Local changes: $file.mine.$baserev"
+                echo "  Latest:        $file.latest.$latestrev"
+            fi
+        fi
+    fi
+
+    return 1
+}
+
+diffrevert_topic()
+{
+    topicfile=$1
+    diffrevert=$2
+    quiet=$3
+
+    set_commonvars $topicfile
+
+    if [ ! -e $file ]; then
+        echo "$topic: Topic does not exist: $file"
+        return 1
+    fi
+
+    if [ ! -e $basefile ]; then
+        get_topic $topicfile $baserev
+        if [ ! -e $basefile ]; then
+            echo "Tried to get $topicfile $baserev, but failed"
+            exit 1
+        fi
+    fi
+
+    diff -q $basefile $file >> /dev/null
+    if [ $? == 0 ]; then
+        if [ "$quiet" == "" ]; then
+            echo "$topic: No changes"
+        fi
+        return 0
+    elif [ "$diffrevert" == "diff" ]; then
+        if [ "$quiet" == "" ]; then
+            diff -U3 $basefile $file
+        fi
+        return 1
+    else
+        echo "Reverting changes to $basefile"
+        cp $basefile $file
+        return 0
+    fi
+}
+
+diff_topic()
+{
+    topicfile=$1
+    quiet=$2
+    diffrevert_topic $topicfile diff $quiet
+}
+
+revert_topic()
+{
+    diffrevert_topic $1 revert
+}
+
+status_topic()
+{
+    topicfile=$1
+    verbose=$2
+
+    set_commonvars $topicfile
+
+    if [ ! -e $revfilex ]; then
+        echo "$topic: $topic.twiki does not exist!"
+        return 1
+    fi
+
+    get_rev
+    latestrev=$r_rev
+    
+    ret=0
+    stat=" "
+    if [ "$latestrev" != "$baserev" ]; then
+        ret=1
+        stat="*"
+    fi
+
+    diff_topic $topicfile quiet
+    if [ $? != 0 ]; then
+        mod="M"
+        if [ $ret == 0 ]; then
+            ret=2
+        fi
+    else
+        mod=" "
+    fi
+
+    if [ "$verbose" != "" ]; then
+        printf "$mod$stat %4.4s  $topicfile\n" $baserev 
+    fi
+    return $ret
+}
+
+open_topic()
+{
+    topicfile=$1
+
+    set_commonvars $topicfile
+
+    open "${BASEURL}/twiki/bin/view/${web}/$topic"
+}
+
+savepreview_topic()
+{
+    topicfile=$1
+    preview=$2
+
+    set_commonvars $topicfile
+
+    status_topic $topic
+    if [ $? == 1 ]; then
+        echo "Current version is not the latest!"
+        return 1
+    elif [ $? == 0 ]; then
+        echo "No differences to save or preview"
+        return 0
+    fi
+
+    t=$(date +"%s")
+    curl -S -s -u $USERNAME:$PASSWORD "${BASEURL}/twiki/bin/edit/${web}/$topic?t=$t" > /tmp/$topic.edit
+    editrev=$(gawk '/originalrev/ { print gensub("^.*originalrev.*value=\"([0-9]+_[0-9]+).*$","\\1",""); }' /tmp/$topic.edit)
+
+    if [ "$preview" != "preview" ]; then
+        action="action_save=Save"
+    else
+        action="action_preview=Preview"
+    fi
+
+    curl -S -s -u $USERNAME:$PASSWORD "${BASEURL}/twiki/bin/save/${web}/$topic" \
+        --data-urlencode "$action" \
+        --data-urlencode "forcenewrevision=1" \
+        --data-urlencode "originalrev=$editrev" \
+        --data-urlencode "text@$topic.twiki" > /tmp/$topic.html
+
+    if [ "$preview" != "preview" ]; then
+        rm /tmp/$topic.html
+        open_topic $topic
+        update_topic $topic cleanup
+    else
+        open /tmp/$topic.html
+    fi
+    rm /tmp/$topic.edit
+}
+
+
+cmd=""
+
+while [ $# -gt 0 ]; do
+    case $1 in 
+        -u|--user) shift; USERNAME=$1 ;;
+        -p|--password) shift; PASSWORD=$1 ;;
+        -b|--baseurl) shift; BASEURL=$1 ;;
+        -w|--twikiweb) shift; TWIKIWEB=$1 ;;
+        -n) INTERACTIVE=0 ;;
+        -h|--help) usage ;;
+        *) cmd=$1; shift ; break ;;
+    esac
+    shift
+done
+
+if [ "$cmd" == "" ]; then
+    usage
+fi
+
+if [[ ( "$INTERACTIVE" == 0 ) && ( "$PASSWORD" == "" ) ]]; then
+    echo "Password is not set, pass with -p or set up $CONFIG"
+    exit 1
+fi
+if [ "$PASSWORD" == "" ]; then read -s -p "Password: " PASSWORD; echo "" ; fi
+
+
+if [ $# == 0 ]; then
+    topics=(*.twiki)
+elif [ -d "$1" ]; then
+    topics=($1/*.twiki)
+else
+    topics=(${@})
+fi
+
+for element in $(seq 0 $((${#topics[@]} - 1))); do
+    topic=${topics[$element]}
+    case $cmd in
+        up|update) update_topic $topic ;;
+        diff) diff_topic $topic ;;
+        revert) revert_topic $topic ;;
+        open) open_topic $topic ;;
+        status) status_topic $topic verbose ;;
+        preview) savepreview_topic $topic preview ;;
+        save) savepreview_topic $topic save ;;
+        cl|cleanup) update_topic $topic cleanup;;
+        *)
+            echo "Unknown command: $cmd"
+            exit 1
+            ;;
+    esac
+done
+
+exit 0

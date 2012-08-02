@@ -80,6 +80,13 @@
 ;;    Tab        Hide/show direct subtree
 ;;    S-Tab      Hide/show all subtrees
 ;;
+;; Server:
+;;    C-c t p    Upload to the server for a preview
+;;    C-c t s    Save as a new revision on the server
+;;    C-c t u    Update the local copy from the latest on the server
+;;    C-c t t    Return the status of the current document
+;;    C-c t d    Diff the current buffer against the server version
+;;    
 ;; When saving the buffer to a file, the format is saved as
 ;; twiki-format (the buffer is rendered for export, then saved).
 ;; 
@@ -90,6 +97,18 @@
 ;;
 ;;   (add-to-list 'auto-mode-alist'("\\.twiki$" . twiki-mode))
 ;;
+;;; COMMAND LINE TOOL:
+;;
+;; Install the command line tool 'twikish' in a location in the default path,
+;; or set `twiki-shell-cmd' to the proper location.
+;;
+;; This enables the following integrations from within emacs.  See the
+;; Server section in the section above.
+;;
+;; Additional command `twiki-open-topic' can be called to download 
+;; a topic that hasn't yet been stored locally.
+;; 
+;;   
 ;;; FIREFOX ITS-ALL-TEXT ADDON INTEGRATION
 ;;
 ;; Firefox supports "It's All Text!", a plug-in that will allow using emacs (or
@@ -274,6 +293,15 @@
 ;;   - Added `twiki-verbatim' [C-c v] to add <verbatim></verbatim> 
 ;;     around a block
 ;;
+;; 2012-07-23  (chris) -- Version 1.1.1
+;;   - Drop '-' as bullet marker, as this causes problems when '-' 
+;;     in a bullet line happens to end up after a line break
+;;   - Fixed logic regarding import and overwriting the buffer
+;;   - Fixed twiki-electric-space so that it does not break incomplete 
+;;     table lines (ie, regonized a table line as starting with |, but
+;;     not necessarily ending with |)
+;;   - Added support for twikish command line tool
+;;   - 
 
 (provide 'twiki)
 
@@ -319,12 +347,22 @@ twiki expects."
   :type '(boolean)
   )
 
+(defcustom twiki-shell-cmd "twikish"
+  "Shell command that supports commands that interact with the twiki server"
+  :group 'twiki
+  :type 'string
+  )
+
 ;;
 ;; Internal variables
 ;;
 
+
 (defvar twiki-heading-base-string ""
   "*Base string to use for heading renumbering")
+
+(defvar twiki-start-heading-number ""
+  "Staring heading number.  Computed automatically")
 
 (defvar twiki-block-tags
   '("php" "file" "script" "code" "verbatim")
@@ -376,7 +414,10 @@ twiki expects."
   "Set to non-null to generate debug messages when rendering, etc.")
 
 (defconst twiki-bullet-regex
-  "\\([-*]\\|[0-9]+\\.\\|[a-zA-Z]\\.\\|i+\\.\\|iv\\.\\|v\\.\\)")
+  "\\([*]\\|[0-9]+\\.\\|[a-zA-Z]\\.\\|i+\\.\\|iv\\.\\|v\\.\\)")
+
+(defconst twiki-bullet-renumber-regex
+  "\\([*-]\\|[0-9]+\\.\\|[a-zA-Z]\\.\\|i+\\.\\|iv\\.\\|v\\.\\)")
 
 (defvar twiki-importing nil)
 
@@ -405,6 +446,12 @@ twiki expects."
   (define-key twiki-mode-map (read-kbd-macro "C-c i") 'twiki-import-for-edit)
   (define-key twiki-mode-map (read-kbd-macro "C-c e") 'twiki-export-to-clipboard)
 
+  (define-key twiki-mode-map (read-kbd-macro "C-c t p") 'twiki-preview)
+  (define-key twiki-mode-map (read-kbd-macro "C-c t u") 'twiki-update)
+  (define-key twiki-mode-map (read-kbd-macro "C-c t s") 'twiki-save)
+  (define-key twiki-mode-map (read-kbd-macro "C-c t t") 'twiki-status)
+  (define-key twiki-mode-map (read-kbd-macro "C-c t d") 'twiki-diff)
+
   (define-key twiki-mode-map (read-kbd-macro "C-c v") 'twiki-verbatim)
 
   (define-key twiki-mode-map " " 'twiki-electric-space)
@@ -426,7 +473,9 @@ twiki expects."
 
 ;;;###autoload
 
-(defgroup twiki nil "Group for twiki-mode related elements.")
+(defgroup twiki nil "Group for twiki-mode related elements."
+  :prefix "twiki-"
+  :group 'hypermedia)
 
 (defface twiki-heading-1
   '( (((class color) (background dark)) :foreground "yellow" :height 1.7 :inherit 'variable-pitch)
@@ -494,9 +543,14 @@ This function ends by invoking the function(s) `twiki-mode-hook'.
   (twiki-render-for-edit)
 
   (add-hook 'before-save-hook
-            (lambda () (when (eq major-mode 'twiki-mode) (twiki-render-for-export))))
+            (lambda () (when (eq major-mode 'twiki-mode) 
+                         (twiki-render-for-export)
+                         )))
   (add-hook 'after-save-hook
-            (lambda () (when (eq major-mode 'twiki-mode) (twiki-render-for-edit))))
+            (lambda () (when (eq major-mode 'twiki-mode) 
+                         (twiki-render-for-edit)
+                         (set-buffer-modified-p nil)
+                         )))
 
   (when twiki-use-orgtbl (turn-on-orgtbl))
 
@@ -556,9 +610,9 @@ This function ends by invoking the function(s) `twiki-mode-hook'.
   "Makes the selected text bold"
   (interactive "r")
   (goto-char end)
-  (insert-string "*")
+  (insert "*")
   (goto-char start)
-  (insert-string "*")
+  (insert "*")
   )
 
 ;;
@@ -568,9 +622,9 @@ This function ends by invoking the function(s) `twiki-mode-hook'.
   "Makes the selected text italic"
   (interactive "r")
   (goto-char end)
-  (insert-string "_")
+  (insert "_")
   (goto-char start)
-  (insert-string "_")
+  (insert "_")
   )
   
 ;;
@@ -582,14 +636,14 @@ This function ends by invoking the function(s) `twiki-mode-hook'.
   (if mark-active
       (progn 
         (goto-char end)
-        (insert-string "</verbatim>")
+        (insert "</verbatim>")
         (goto-char start)
-        (insert-string "<verbatim>\n")
+        (insert "<verbatim>\n")
         )
-    (insert-string "\n</verbatim>")
+    (insert "\n</verbatim>")
     (beginning-of-line)
-    (previous-line)
-    (insert-string "<verbatim>\n")
+    (forward-line -1)
+    (insert "<verbatim>\n")
     )
   )
   
@@ -637,10 +691,10 @@ lists.  In addition, Twiki does not allow indentation of continuation lines.
     (save-excursion
       (set-buffer buf)
       (erase-buffer)
-      (insert-string text)
+      (insert text)
       (twiki-render-for-export)
       (set-buffer buf)
-      (beginning-of-buffer)
+      (goto-char (point-min))
       (clipboard-kill-ring-save (point-min) (point-max))
       (if twiki-kill-export-buffer
           (kill-buffer buf)
@@ -671,8 +725,8 @@ lists, making them more readable for display and editing."
       ;; Search for all instances of "---+++ 1. Title" at any level
       ;; Level is the number of "+", save the min level in 'found-min
       (while (re-search-forward 
-              (format "^---\\(\++\\)!*\\( *\\([.0-9]+\\. *\\)?\\)\\(.*\\)"
-                      twiki-heading-base-string)
+              "^---\\(\++\\)!*\\( *\\([.0-9]+\\. *\\)?\\)\\(.*\\)"
+              ;;twiki-heading-base-string  used to be in a format...
               nil t)
         (let ((level (length (match-string 1)))
               (number-str (match-string 2)))
@@ -707,17 +761,17 @@ lists, making them more readable for display and editing."
     
     ;; If were already in twiki-mode, renumber to twiki, then back to 
     ;; numbers
-    (message "Twiki - Renumbering lists...")
+    (when twiki-debug (message "Twiki - Renumbering lists..."))
     (if (and (eq major-mode 'twiki-mode)
              (not twiki-importing))
         (twiki-renumber-list nil))
     (twiki-renumber-list t)
     
     ;; Renumber headings
-    (message "Twiki - Renumbering heading...")
+    (when twiki-debug (message "Twiki - Renumbering heading..."))
     (twiki-renumber-headings)
     
-    (message "Twiki - Renumbering tables...")
+    (when twiki-debug (message "Twiki - Renumbering tables..."))
     (twiki-renumber-tables)
    
     (when twiki-use-orgtbl
@@ -729,7 +783,7 @@ lists, making them more readable for display and editing."
       ;; the left.  On export, these cells will be converted back to "||"
    
       (goto-char (point-min))
-      (message "Twiki - Reformatting tables...")
+      (when twiki-debug (message "Twiki - Reformatting tables..."))
       (while (re-search-forward "||" nil t)
         (replace-match "| << |")
         (backward-char) ; to ensure we find multiple colspan cells: "|||"
@@ -747,8 +801,7 @@ lists, making them more readable for display and editing."
       )
     )
 
-  (not-modified)
-  (message "Twiki - Done")
+  (when twiki-debug (message "Twiki - Done"))
   )
 
 
@@ -758,7 +811,7 @@ lists, making them more readable for display and editing."
 (defun twiki-render-for-export ()
   (save-excursion
     (goto-char (point-min))
-    (message "Twiki export - renumbering lists")
+    (when twiki-debug (message "Twiki export - renumbering lists"))
     (twiki-renumber-list nil)
 
     (when twiki-use-orgtbl
@@ -766,7 +819,7 @@ lists, making them more readable for display and editing."
       ;; Convert "| << | " form back to "||" to represent colspan
       ;; (See above in render-for-edit)
       
-      (message "Twiki export - reformatting tables")
+      (when twiki-debug (message "Twiki export - reformatting tables"))
       (goto-char (point-min))
       (while (re-search-forward "| *<< *|" nil t)
         (replace-match "||")
@@ -783,7 +836,7 @@ lists, making them more readable for display and editing."
         )
       )
     )
-  (message "Twiki export - Done")
+  (when twiki-debug (message "Twiki export - Done"))
   )
 
 ;;
@@ -827,7 +880,7 @@ for display).  Otherwise list numbers are stripped to '-' for twiki synatax.
             ;; Looks for bullet / list item line
             (format "^\\(\\(%s\\)+\\(%s\\) \\).*$" 
                     (make-string twiki-tab-width ? )
-                    twiki-bullet-regex)
+                    twiki-bullet-renumber-regex)
             nil t)
       
       (unless (twiki-skip-past-blocks)
@@ -838,7 +891,7 @@ for display).  Otherwise list numbers are stripped to '-' for twiki synatax.
           ;; while the next line has this indent-str and is not a nested bullet
           ;; collapse the line
           (while (and (looking-at (format "\n\\(%s\\)\\S +" indent-str))
-                      (not (looking-at (format "\n\\(%s\\)%s " indent-str twiki-bullet-regex))))
+                      (not (looking-at (format "\n\\(%s\\)%s " indent-str twiki-bullet-renumber-regex))))
               (delete-char (- (match-end 1) (match-beginning 1)))
               (end-of-line)
               )
@@ -854,14 +907,14 @@ for display).  Otherwise list numbers are stripped to '-' for twiki synatax.
     (when twiki-debug (message "twiki-renumber-list: collapsing blank lines"))
     (goto-char (point-min))
     (while (re-search-forward
-            ;; Looks for any amount of white space followed by twiki-bullet-regex
-              (format "^ +%s.*$" twiki-bullet-regex) 
+            ;; Looks for any amount of white space followed by twiki-bullet-renumber-regex
+              (format "^ +%s.*$" twiki-bullet-renumber-regex) 
               nil t)
       
       (unless (twiki-skip-past-blocks)
         ;; while the next-line is blank followed by a bullet line, collapse
         (cond 
-         ((looking-at (format "\\(\n *\\)\n\\( \\)+%s " twiki-bullet-regex))
+         ((looking-at (format "\\(\n *\\)\n\\( \\)+%s " twiki-bullet-renumber-regex))
           (replace-match (if to-numbers "\n" "") nil nil nil 1)
           ;;(replace-match (if (or (not (eq major-mode 'twiki-mode))
           ;;                       (not twiki-importing))
@@ -870,7 +923,7 @@ for display).  Otherwise list numbers are stripped to '-' for twiki synatax.
           (end-of-line)
           )
 
-         ((looking-at (format "\\(\\(\n *\\)\\{2,\\}\\)\n +%s " twiki-bullet-regex))
+         ((looking-at (format "\\(\\(\n *\\)\\{2,\\}\\)\n +%s " twiki-bullet-renumber-regex))
           (replace-match "\n" nil nil nil 1)
           (end-of-line))
          )
@@ -882,10 +935,10 @@ for display).  Otherwise list numbers are stripped to '-' for twiki synatax.
     (goto-char (point-min))
     
     (while (re-search-forward
-            ;; Looks for any amount of white space followed by twiki-bullet-regex
+            ;; Looks for any amount of white space followed by twiki-bullet-renumber-regex
             (format "^\\(\\(%s\\)+\\(%s\\)\\( \\)\\).*$" 
                     (make-string twiki-tab-width ? )
-                    twiki-bullet-regex)
+                    twiki-bullet-renumber-regex)
             nil t)
     
       (when twiki-debug (message "twiki-renumber-list, continuing renumber"))
@@ -929,11 +982,11 @@ for display).  Otherwise list numbers are stripped to '-' for twiki synatax.
       (message "twiki-renumber-cur-list: %s" (match-string 0)))
 
     (while (looking-at
-            ;; Looks for parent-depth followed by twiki-bullet-regex
+            ;; Looks for parent-depth followed by twiki-bullet-renumber-regex
             (format "^\\(%s\\(?:%s\\)+\\)%s\\( +\\)\\S *.*$" 
                     (make-string parent-indent ? ) 
                     (make-string twiki-tab-width ? )
-                    twiki-bullet-regex))
+                    twiki-bullet-renumber-regex))
       
       (when twiki-debug (message "looking-at %s" (match-string 0)))
 
@@ -944,7 +997,8 @@ for display).  Otherwise list numbers are stripped to '-' for twiki synatax.
       (setq start nil)
 
       (let ((this-indent (- (match-end 1) (match-beginning 1)))
-            (matches (match-data)) )
+            (matches (match-data)) 
+            indent-str)
 
         (if (= cur-indent 0) (setq cur-indent this-indent))
 
@@ -1055,7 +1109,7 @@ for display).  Otherwise list numbers are stripped to '-' for twiki synatax.
               (end-of-line)
 
               ;; Blank line between bullets
-              ;;(insert-string "\n")
+              ;;(insert "\n")
               )
             )
 
@@ -1065,7 +1119,7 @@ for display).  Otherwise list numbers are stripped to '-' for twiki synatax.
             (if (= (line-number-at-pos) line)
                 (progn 
                   (end-of-line)
-                  (insert-string "\n")
+                  (insert "\n")
                   )
               )
             )
@@ -1128,11 +1182,12 @@ is in the middle of a link"
   "Import the text in the clipboard into current buffer, render for editing,
 and turn on twiki-mode.  This obliterates the contents of the buffer."
   (interactive 
-   (list (or (not (eq major-mode 'twiki-mode))
-             twiki-silent-import
-             (y-or-n-p "Use current buffer (will overwrite contents)? "))
-         )
-   )
+   (list (cond
+          ((not (eq major-mode 'twiki-mode)) t)
+          (twiki-silent-import nil)
+          ((y-or-n-p "Use current buffer (will overwrite contents)? ") nil)
+          (t t))))
+
   (when twiki-debug (message "twiki-import-for-edit"))
   (let ((twiki-importing t))
     (if make-buf (switch-to-buffer (generate-new-buffer "twiki")))
@@ -1208,7 +1263,7 @@ and turn on twiki-mode.  This obliterates the contents of the buffer."
         )
 
        ;; Table
-       ((looking-at (format "^ *\\([|]\\([^|\n]*[|]\\)+\\) *$"))
+       ((looking-at (format "^ *\\([|].*\\) *$"))
         (setq
          start 0
          text-start (- (match-end 1) (match-beginning 0))
@@ -1352,7 +1407,7 @@ and turn on twiki-mode.  This obliterates the contents of the buffer."
         (replace-match "" 1))
       
     (if (> m 0)
-        (insert-string (make-string m ? )))
+        (insert (make-string m ? )))
 
     (if (> (marker-position cur-line) (point))
         (goto-char cur-line))
@@ -1543,7 +1598,7 @@ Headings are prefixed with 1.1.1 notation."
               (progn 
                 (when twiki-debug (message "end-of-buffer detected"))
                 (end-of-line)
-                (insert-string "\n")))
+                (insert "\n")))
           (beginning-of-line)
           (incf num)
           )
@@ -1617,7 +1672,7 @@ Headings are prefixed with 1.1.1 notation."
         (if (looking-at "[^\n ]*")
             (goto-char (match-end 0)))
         (> (current-column) fill-column))
-      (insert-string "\n")
+      (insert "\n")
       (twiki-indent-line)
       )
    
@@ -1663,3 +1718,66 @@ Headings are prefixed with 1.1.1 notation."
   6 - heading text"
   (format "^---\\(\\++\\)\\(!*\\)\\( *\\(%s\\)?\\([.0-9]+\\. *\\)?\\)\\(.*\\) *"
           twiki-heading-base-string))
+
+(defun twiki-preview ()
+  "Invokes the external shell command to preview this file"
+  (interactive)
+  (save-buffer)
+  (message "Executing twiki preview...")
+  (shell-command (format "%s -n preview %s" twiki-shell-cmd buffer-file-name))
+  )
+
+(defun twiki-save ()
+  "Invokes the external shell command to save this file"
+  (interactive)
+  (when (y-or-n-p "Save file as new version without preview? ")
+    (save-buffer)
+    (message "Executing twiki save...")
+    (let ((r (shell-command (format "%s -n save %s" twiki-shell-cmd buffer-file-name))))
+      (if (= r 0)
+          (revert-buffer t t)
+        )
+      )
+    )
+  )
+
+(defun twiki-update ()
+  "Invokes the external shell command to update this file"
+  (interactive)
+  (message "Executing twiki update...")
+  (let ((r (shell-command (format "%s -n update %s" twiki-shell-cmd buffer-file-name))))
+    (if (= r 0)
+        (revert-buffer t t))
+    )
+  )
+
+(defun twiki-status ()
+  "Invokes the external shell command to return the status of this file"
+  (interactive)
+  (message "Executing twiki status...")
+  (shell-command (format "%s -n status %s" twiki-shell-cmd buffer-file-name)))
+
+(defun twiki-diff ()
+  "Invokes the external shell command to diff this file"
+  (interactive)
+  (message "Executing twiki diff...")
+  (let ((f buffer-file-name)
+        (buf (get-buffer-create (format "*%s diff*" (buffer-name)))))
+    (pop-to-buffer buf)
+    (erase-buffer)
+    (shell-command (format "%s -n diff %s" twiki-shell-cmd f) t)
+    (diff-mode)))
+
+
+(defun twiki-open-topic (filename)
+  "Retrieve a new topic from the server"
+  (interactive "FTopic file: ")
+  (message "Executing twiki update...")
+  (let ((r (shell-command (format "%s -n update %s" twiki-shell-cmd filename)))
+        (twiki-filename filename))
+    (unless (string-match "\.twiki$" filename)
+      (setq twiki-filename (format "%s.twiki" filename)))
+    (if (= r 0)
+        (find-file twiki-filename))
+    )
+  )

@@ -54,6 +54,13 @@
 ;;    Tab        Hide/show direct subtree
 ;;    S-Tab      Hide/show all subtrees
 ;;
+;; Server:
+;;    C-c t p    Upload to the server for a preview
+;;    C-c t s    Save as a new revision on the server
+;;    C-c t u    Update the local copy from the latest on the server
+;;    C-c t t    Return the status of the current document
+;;    C-c t d    Diff the current buffer against the server version
+;;    
 ;; When saving the buffer to a file, the format is saved as
 ;; twiki-format (the buffer is rendered for export, then saved).
 ;; 
@@ -64,6 +71,18 @@
 ;;
 ;;   (add-to-list 'auto-mode-alist'("\\.twiki$" . twiki-mode))
 ;;
+;;; COMMAND LINE TOOL:
+;;
+;; Install the command line tool 'twikish' in a location in the default path,
+;; or set `twiki-shell-cmd' to the proper location.
+;;
+;; This enables the following integrations from within emacs.  See the
+;; Server section in the section above.
+;;
+;; Additional command `twiki-open-topic' can be called to download 
+;; a topic that hasn't yet been stored locally.
+;; 
+;;   
 ;;; FIREFOX ITS-ALL-TEXT ADDON INTEGRATION
 ;;
 ;; Firefox supports "It's All Text!", a plug-in that will allow using emacs (or
@@ -248,4 +267,13 @@
 ;;   - Added `twiki-verbatim' [C-c v] to add <verbatim></verbatim> 
 ;;     around a block
 ;;
+;; 2012-07-23  (chris) -- Version 1.1.1
+;;   - Drop '-' as bullet marker, as this causes problems when '-' 
+;;     in a bullet line happens to end up after a line break
+;;   - Fixed logic regarding import and overwriting the buffer
+;;   - Fixed twiki-electric-space so that it does not break incomplete 
+;;     table lines (ie, regonized a table line as starting with |, but
+;;     not necessarily ending with |)
+;;   - Added support for twikish command line tool
+;;   - 
 
