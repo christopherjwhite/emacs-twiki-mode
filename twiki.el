@@ -293,7 +293,7 @@
 ;;   - Added `twiki-verbatim' [C-c v] to add <verbatim></verbatim> 
 ;;     around a block
 ;;
-;; 2012-07-23  (chris) -- Version 1.1.1
+;; 2012-08-01  (chris) -- Version 1.2
 ;;   - Drop '-' as bullet marker, as this causes problems when '-' 
 ;;     in a bullet line happens to end up after a line break
 ;;   - Fixed logic regarding import and overwriting the buffer
@@ -301,8 +301,7 @@
 ;;     table lines (ie, regonized a table line as starting with |, but
 ;;     not necessarily ending with |)
 ;;   - Added support for twikish command line tool
-;;   - 
-
+;; 
 (provide 'twiki)
 
 (require 'info)
