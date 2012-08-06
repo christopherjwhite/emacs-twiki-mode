@@ -58,7 +58,9 @@ PASSWORD=""
 MERGETOOL=""
 CONFIG=$HOME/.twikish
 
+# Command line args
 INTERACTIVE=1
+PARENT=""
 
 if [ -e "$CONFIG" ]; then
     source $CONFIG
@@ -301,6 +303,10 @@ revert_topic()
     diffrevert_topic $1 revert
 }
 
+# Returns: 
+#   1 - topics does not exist
+#   2 - topic is not latest
+#   3 - topic is modified (overrides #2)
 status_topic()
 {
     topicfile=$1
@@ -308,8 +314,10 @@ status_topic()
 
     set_commonvars $topicfile
 
-    if [ ! -e $revfilex ]; then
-        echo "$topic: $topic.twiki does not exist!"
+    if [ ! -e $revfile ]; then
+        if [ "$verbose" != "" ]; then
+            echo "$topic: $topic.twiki does not exist"
+        fi
         return 1
     fi
 
@@ -319,7 +327,7 @@ status_topic()
     ret=0
     stat=" "
     if [ "$latestrev" != "$baserev" ]; then
-        ret=1
+        ret=2
         stat="*"
     fi
 
@@ -327,7 +335,7 @@ status_topic()
     if [ $? != 0 ]; then
         mod="M"
         if [ $ret == 0 ]; then
-            ret=2
+            ret=3
         fi
     else
         mod=" "
@@ -354,19 +362,22 @@ savepreview_topic()
     preview=$2
 
     set_commonvars $topicfile
+    newtopic=0
 
     status_topic $topic
-    if [ $? == 1 ]; then
-        echo "Current version is not the latest!"
-        return 1
-    elif [ $? == 0 ]; then
-        echo "No differences to save or preview"
-        return 0
-    fi
+    case $? in
+        0) echo "No differences to save or preview"; return 0 ;;
+        1) newtopic=1 ;;
+        2) echo "Current version is not the latest!"; return 1 ;;
+    esac
 
-    t=$(date +"%s")
-    curl -S -s -u $USERNAME:$PASSWORD "${BASEURL}/twiki/bin/edit/${web}/$topic?t=$t" > /tmp/$topic.edit
-    editrev=$(gawk '/originalrev/ { print gensub("^.*originalrev.*value=\"([0-9]+_[0-9]+).*$","\\1",""); }' /tmp/$topic.edit)
+    if [ "$newtopic" == "0" ]; then
+        t=$(date +"%s")
+        curl -S -s -u $USERNAME:$PASSWORD "${BASEURL}/twiki/bin/edit/${web}/$topic?t=$t" > /tmp/$topic.edit
+        editrev=$(gawk '/originalrev/ { print gensub("^.*originalrev.*value=\"([0-9]+_[0-9]+).*$","\\1",""); }' /tmp/$topic.edit)
+    else
+        editrev=0
+    fi
 
     if [ "$preview" != "preview" ]; then
         action="action_save=Save"
@@ -378,7 +389,10 @@ savepreview_topic()
         --data-urlencode "$action" \
         --data-urlencode "forcenewrevision=1" \
         --data-urlencode "originalrev=$editrev" \
-        --data-urlencode "text@$topic.twiki" > /tmp/$topic.html
+        --data-urlencode "newtopic=$newtopic" \
+        --data-urlencode "topicparent=$parenttopic" \
+        --data-urlencode "text@$topic.twiki" \
+        > /tmp/$topic.html
 
     if [ "$preview" != "preview" ]; then
         rm /tmp/$topic.html
@@ -399,6 +413,7 @@ while [ $# -gt 0 ]; do
         -p|--password) shift; PASSWORD=$1 ;;
         -b|--baseurl) shift; BASEURL=$1 ;;
         -w|--twikiweb) shift; TWIKIWEB=$1 ;;
+        --parent) shift; PARENT=$1 ;;
         -n) INTERACTIVE=0 ;;
         -h|--help) usage ;;
         *) cmd=$1; shift ; break ;;
@@ -443,4 +458,4 @@ for element in $(seq 0 $((${#topics[@]} - 1))); do
     esac
 done
 
-exit 0
+exit $?
