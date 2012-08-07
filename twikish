@@ -31,7 +31,9 @@
 #   USERNAME="user"
 #   PASSWORD="pass"
 #   MERGETOOL="kdiff3"
+#   OPENCMD="open"
 #
+# 
 # Set the values as appropriate.  Password may be left off and the tool will
 # prompt.  Password must be specified for non-interative use, either in the 
 # config file or on the command line via -p|--password
@@ -52,6 +54,11 @@ BASEURL=""
 TWIKIWEB=""
 USERNAME=""
 PASSWORD=""
+
+# "open" for Mac
+# "start" for Windows
+# "firefox" or other browser in Linux
+OPENCMD="open"
 
 # Mergetool must accept commands as follows: base mine theirs -o outfile
 # Works out of the box with "kdiff3"
@@ -353,7 +360,7 @@ open_topic()
 
     set_commonvars $topicfile
 
-    open "${BASEURL}/twiki/bin/view/${web}/$topic"
+    $OPENCMD "${BASEURL}/twiki/bin/view/${web}/$topic"
 }
 
 savepreview_topic()
@@ -399,7 +406,7 @@ savepreview_topic()
         open_topic $topic
         update_topic $topic cleanup
     else
-        open /tmp/$topic.html
+        $OPENCMD /tmp/$topic.html
     fi
     rm /tmp/$topic.edit
 }
