@@ -69,12 +69,21 @@ CONFIG=$HOME/.twikish
 INTERACTIVE=1
 PARENT=""
 
-if [ -e "$CONFIG" ]; then
-    source $CONFIG
-else
-    echo "No config file found: $CONFIG"
-    exit 1
-fi
+read_config()
+{
+    rc_file=$1
+    noerror=$2
+
+    if [ -e "$rc_file" ]; then
+        source $rc_file
+    elif [ "$noerror" == "" ]; then
+        echo "No config file found: $rc_file"
+        exit 1
+    else
+        return 1
+    fi
+    return 0
+}
 
 usage()
 {
@@ -146,15 +155,37 @@ get_topic()
     o_rev=$r_rev
     o_file=$o_dir/.twiki/$o_topic.twiki.$o_rev
 
-    curl -S -s -u $USERNAME:$PASSWORD ${BASEURL}/twiki/bin/view/${web}/${o_topic}\?raw=text$revarg | \
+    curl -k -S -s -u $USERNAME:$PASSWORD ${BASEURL}/twiki/bin/view/${web}/${o_topic}\?raw=text$revarg | \
         sed 's/&#822[01];/"/g' | \
         sed "s/&#821[67];/'/g" > $o_file
+    if [ $? != 0 ]; then
+        echo "Failed to retrieve topic"
+        exit 1
+    fi
 }
 
 get_rev()
 {
-    r_rev=$(curl -S -s -u $USERNAME:$PASSWORD  ${BASEURL}/twiki/bin/view/${web}/${topic}\?raw=on | \
+    
+    r_rev=$(curl -k -S -s -u $USERNAME:$PASSWORD  ${BASEURL}/twiki/bin/view/${web}/${topic}\?raw=on | \
         gawk '/patternRevInfo/ { print gensub("^.*patternRevInfo.*\\<(r[0-9]+).*$", "\\1", "");}')
+    if [ "$r_rev" == "" ]; then
+        echo "Could not get revision"
+        exit 1
+    fi
+}
+
+search_topic()
+{
+    topicfile=$1
+    set_commonvars $topicfile
+
+    curl -k -S -s -u $USERNAME:$PASSWORD  ${BASEURL}/twiki/bin/search \
+        --data-urlencode "scope=topic" \
+        --data-urlencode "search=$topicfile" \
+        --data-urlencode "web=$web" > /tmp/search.html
+
+    open /tmp/search.html
 }
 
 update_topic()
@@ -380,8 +411,13 @@ savepreview_topic()
 
     if [ "$newtopic" == "0" ]; then
         t=$(date +"%s")
-        curl -S -s -u $USERNAME:$PASSWORD "${BASEURL}/twiki/bin/edit/${web}/$topic?t=$t" > /tmp/$topic.edit
-        editrev=$(gawk '/originalrev/ { print gensub("^.*originalrev.*value=\"([0-9]+_[0-9]+).*$","\\1",""); }' /tmp/$topic.edit)
+        curl -k -S -s -u $USERNAME:$PASSWORD "${BASEURL}/twiki/bin/edit/${web}/$topic?t=$t" > /tmp/$topic.edit
+        if [ $? != 0 ]; then
+            echo "Failed to edit topic"
+            exit 1
+        fi
+        editrev=$(gawk '/originalrev/ { print gensub("^.*originalrev.*value=\"([0-9]+_[0-9]+).*$","\\1",""); }' \
+            /tmp/$topic.edit)
     else
         editrev=0
     fi
@@ -392,7 +428,7 @@ savepreview_topic()
         action="action_preview=Preview"
     fi
 
-    curl -S -s -u $USERNAME:$PASSWORD "${BASEURL}/twiki/bin/save/${web}/$topic" \
+    curl -k -S -s -u $USERNAME:$PASSWORD "${BASEURL}/twiki/bin/save/${web}/$topic" \
         --data-urlencode "$action" \
         --data-urlencode "forcenewrevision=1" \
         --data-urlencode "originalrev=$editrev" \
@@ -400,6 +436,10 @@ savepreview_topic()
         --data-urlencode "topicparent=$parenttopic" \
         --data-urlencode "text@$topic.twiki" \
         > /tmp/$topic.html
+    if [ $? != 0 ]; then
+        echo "Failed to save topic"
+        exit 1
+    fi
 
     if [ "$preview" != "preview" ]; then
         rm /tmp/$topic.html
@@ -411,11 +451,23 @@ savepreview_topic()
     rm /tmp/$topic.edit
 }
 
+#
+# Main loop
+#
+
+# Start by reading main config, if -c was specified on the command
+# line, that will be read and overwrite any params
+if [ -e ".twikish" ]; then
+    read_config .twikish
+else
+    read_config $CONFIG noerror
+fi
 
 cmd=""
 
 while [ $# -gt 0 ]; do
     case $1 in 
+        -c|--config) shift; read_config $1 ;;
         -u|--user) shift; USERNAME=$1 ;;
         -p|--password) shift; PASSWORD=$1 ;;
         -b|--baseurl) shift; BASEURL=$1 ;;
@@ -458,6 +510,7 @@ for element in $(seq 0 $((${#topics[@]} - 1))); do
         preview) savepreview_topic $topic preview ;;
         save) savepreview_topic $topic save ;;
         cl|cleanup) update_topic $topic cleanup;;
+        search) search_topic $topic ;;
         *)
             echo "Unknown command: $cmd"
             exit 1

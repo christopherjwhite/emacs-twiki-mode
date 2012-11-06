@@ -47,7 +47,7 @@
 ;;
 ;;   2. Select all and copy to clipboard
 ;;   
-;;   3. In emacs, twiki-mport-for-edit - assuming you are not already
+;;   3. In emacs, twiki-import-for-edit - assuming you are not already
 ;;      in a buffer in twiki-mode, this will:
 ;;         * create a temp file
 ;;         * create buffer visiting that file,
@@ -302,6 +302,11 @@
 ;;     not necessarily ending with |)
 ;;   - Added support for twikish command line tool
 ;; 
+;; 2012-11-05  (chris) -- Version 1.3
+;;   - Added font-lock for bumpy case links
+;;   - Fixed buffer showing modified after save
+;;   - Fixed problems with longlines-mode
+
 (provide 'twiki)
 
 (require 'info)
@@ -373,9 +378,6 @@ twiki expects."
 
 (defvar twiki-font-lock-keywords
   (list
-   (list "\\(:\\?:\\)"
-	 '(1 'highlight))
-
    (list "^\\(---\\+!* .*\\)"
 	 '(1 'twiki-heading-1))
 
@@ -390,6 +392,9 @@ twiki expects."
 
    (list "^\\(---\\+\\+\\+\\+\\+!* .*\\)"
 	 '(1 'twiki-heading-5))
+
+   (list "\\(:\\?:\\)"
+	 '(1 'highlight))
 
    (list "\\(\\*\\b.*?\\b\\*\\)"
 	 '(1 'bold))
@@ -406,6 +411,8 @@ twiki expects."
    (list "\\({{.*}}\\)"
 	 '(1 'highlight))
    
+   (list "\\(^\\|[^!]\\)\\(\\b[A-Z]+[a-z]+[A-Z]+[a-zA-Z0-9]*\\b\\)" 
+         '(2 'highlight))
    )
   )
 
@@ -685,7 +692,7 @@ lists.  In addition, Twiki does not allow indentation of continuation lines.
 
   ;; Things to do only in the temp buffer that is relevant to twiki format only
   (let ((buf (get-buffer-create (format "*twiki-%s*" (buffer-name))))
-        (text (buffer-substring-no-properties (point-min) (point-max)))
+        (text (filter-buffer-substring (point-min) (point-max) nil t))
         )
     (save-excursion
       (set-buffer buf)
@@ -713,93 +720,98 @@ lists, making them more readable for display and editing."
 
   (when twiki-debug (message "Rendering for twiki edit"))
 
-  ;; auto-detect min/max header levels
-  (save-excursion
-    (goto-char (point-min))
-    (let ((found-min 20)
-          found-number-str
-          (found-max 0))
-      (when twiki-debug (message "Searching for headings"))
+  (let ((mod (buffer-modified-p)))
 
-      ;; Search for all instances of "---+++ 1. Title" at any level
-      ;; Level is the number of "+", save the min level in 'found-min
-      (while (re-search-forward 
-              "^---\\(\++\\)!*\\( *\\([.0-9]+\\. *\\)?\\)\\(.*\\)"
-              ;;twiki-heading-base-string  used to be in a format...
-              nil t)
-        (let ((level (length (match-string 1)))
-              (number-str (match-string 2)))
-          (when twiki-debug (message "Found level %d header" level))
+    (when twiki-debug (message "-- modified: %S" mod))
+  
+    ;; auto-detect min/max header levels
+    (save-excursion
+      (goto-char (point-min))
+      (let ((found-min 20)
+            found-number-str
+            (found-max 0))
+        (when twiki-debug (message "Searching for headings"))
 
-          (cond 
-           ;; This header *has* a number-str
-           ((string-match "[^ ]" number-str)
-            (when (< level found-min) 
-              (setq found-min level)
-              (if (null found-number-str) (setq found-number-str number-str))))
-           )
+        ;; Search for all instances of "---+++ 1. Title" at any level
+        ;; Level is the number of "+", save the min level in 'found-min
+        (while (re-search-forward 
+                "^---\\(\++\\)!*\\( *\\([.0-9]+\\. *\\)?\\)\\(.*\\)"
+                ;;twiki-heading-base-string  used to be in a format...
+                nil t)
+          (let ((level (length (match-string 1)))
+                (number-str (match-string 2)))
+            (when twiki-debug (message "Found level %d header" level))
+
+            (cond 
+             ;; This header *has* a number-str
+             ((string-match "[^ ]" number-str)
+              (when (< level found-min) 
+                (setq found-min level)
+                (if (null found-number-str) (setq found-number-str number-str))))
+             )
+            )
+          )
+
+        (when (not (= found-min 20))
+          (setq twiki-min-heading-level found-min)
+          (when twiki-debug (message "Start number-str: %s" found-number-str))
+          (when (string-match 
+                 "^ *\\(\\(.*\\)\\.\\)?\\(\\([0-9]+\\)\\.\\) *$" 
+                 found-number-str)
+            (setq twiki-heading-base-string (match-string 1 found-number-str))
+            (setq twiki-start-heading-number 
+                  (string-to-number (match-string 4 found-number-str)))
+            )
           )
         )
-
-      (when (not (= found-min 20))
-        (setq twiki-min-heading-level found-min)
-        (when twiki-debug (message "Start number-str: %s" found-number-str))
-        (when (string-match 
-               "^ *\\(\\(.*\\)\\.\\)?\\(\\([0-9]+\\)\\.\\) *$" 
-               found-number-str)
-          (setq twiki-heading-base-string (match-string 1 found-number-str))
-          (setq twiki-start-heading-number 
-                (string-to-number (match-string 4 found-number-str)))
+      
+      (when twiki-debug (message "Processing local variabls"))
+      ;; Read any local-variables that may be specified in the text
+      (hack-local-variables)
+      
+      ;; If were already in twiki-mode, renumber to twiki, then back to 
+      ;; numbers
+      (when twiki-debug (message "Twiki - Renumbering lists..."))
+      (if (and (eq major-mode 'twiki-mode)
+               (not twiki-importing))
+          (twiki-renumber-list nil))
+      (twiki-renumber-list t)
+      
+      ;; Renumber headings
+      (when twiki-debug (message "Twiki - Renumbering heading..."))
+      (twiki-renumber-headings)
+      
+      (when twiki-debug (message "Twiki - Renumbering tables..."))
+      (twiki-renumber-tables)
+      
+      (when twiki-use-orgtbl
+        
+        ;; Tables in twiki support colspan by adjacent bars "||".  This
+        ;; doesn't work well with orgtbl minor mode because it wants to
+        ;; reformat all columns to the same width.  So, reformat colspan
+        ;; cells with "| << |" to mark them as spanned with the cell to
+        ;; the left.  On export, these cells will be converted back to "||"
+        
+        (goto-char (point-min))
+        (when twiki-debug (message "Twiki - Reformatting tables..."))
+        (while (re-search-forward "||" nil t)
+          (replace-match "| << |")
+          (backward-char) ; to ensure we find multiple colspan cells: "|||"
+          )
+        
+        ;; Recognized rows that declare table alignment and column width rows
+        ;;   <10>   no alignment defined, 10 chars width
+        ;;   <r10>  for right aligned, 10 chars width
+        ;;   <l10>  for lef aligned, 10 chars width
+        (goto-char (point-min))
+        (while (re-search-forward 
+                "^<!--\\( *|\\( *<[rl]?[0-9]+> *|\\| *|\\)+ *\\) orgtbl.*-->$" nil t)
+          (replace-match "\\1")
           )
         )
       )
-    
-    (when twiki-debug (message "Processing local variabls"))
-    ;; Read any local-variables that may be specified in the text
-    (hack-local-variables)
-    
-    ;; If were already in twiki-mode, renumber to twiki, then back to 
-    ;; numbers
-    (when twiki-debug (message "Twiki - Renumbering lists..."))
-    (if (and (eq major-mode 'twiki-mode)
-             (not twiki-importing))
-        (twiki-renumber-list nil))
-    (twiki-renumber-list t)
-    
-    ;; Renumber headings
-    (when twiki-debug (message "Twiki - Renumbering heading..."))
-    (twiki-renumber-headings)
-    
-    (when twiki-debug (message "Twiki - Renumbering tables..."))
-    (twiki-renumber-tables)
-   
-    (when twiki-use-orgtbl
-      
-      ;; Tables in twiki support colspan by adjacent bars "||".  This
-      ;; doesn't work well with orgtbl minor mode because it wants to
-      ;; reformat all columns to the same width.  So, reformat colspan
-      ;; cells with "| << |" to mark them as spanned with the cell to
-      ;; the left.  On export, these cells will be converted back to "||"
-   
-      (goto-char (point-min))
-      (when twiki-debug (message "Twiki - Reformatting tables..."))
-      (while (re-search-forward "||" nil t)
-        (replace-match "| << |")
-        (backward-char) ; to ensure we find multiple colspan cells: "|||"
-        )
-      
-      ;; Recognized rows that declare table alignment and column width rows
-      ;;   <10>   no alignment defined, 10 chars width
-      ;;   <r10>  for right aligned, 10 chars width
-      ;;   <l10>  for lef aligned, 10 chars width
-      (goto-char (point-min))
-      (while (re-search-forward 
-              "^<!--\\( *|\\( *<[rl]?[0-9]+> *|\\| *|\\)+ *\\) orgtbl.*-->$" nil t)
-        (replace-match "\\1")
-        )
-      )
+    (set-buffer-modified-p mod)
     )
-
   (when twiki-debug (message "Twiki - Done"))
   )
 
@@ -1087,14 +1099,20 @@ for display).  Otherwise list numbers are stripped to '-' for twiki synatax.
                      
                      ((< lef eol)
                       (goto-char lef)
-                      (re-search-forward " +" eol t))
+                      (re-search-forward " *" eol t))
                      
                      (t (setq done t))))
                    
-                   ;; Go to end of word backward
-                   (t ;; (> web (+ bol ic))
+                   ;; Go to end of word backward as long as it's not the first workd
+                   ((> web (+ bol ic))
                     (goto-char web)
                     (re-search-forward " *" eol t))
+
+                   (wef
+                    (goto-char wef)
+                    (re-search-forward " *" eol t))
+
+                   (t (setq done t))
                    )
                   
                   (unless done
