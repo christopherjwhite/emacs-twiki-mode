@@ -692,7 +692,7 @@ lists.  In addition, Twiki does not allow indentation of continuation lines.
 
   ;; Things to do only in the temp buffer that is relevant to twiki format only
   (let ((buf (get-buffer-create (format "*twiki-%s*" (buffer-name))))
-        (text (filter-buffer-substring (point-min) (point-max) nil t))
+        (text (filter-buffer-substring (point-min) (point-max)))
         )
     (save-excursion
       (set-buffer buf)
