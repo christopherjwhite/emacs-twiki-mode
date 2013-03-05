@@ -306,7 +306,10 @@
 ;;   - Added font-lock for bumpy case links
 ;;   - Fixed buffer showing modified after save
 ;;   - Fixed problems with longlines-mode
-
+;;
+;; 2013-03-04  (chris) -- Version 1.3.1
+;;   - Fixed Git issue #1 - Emacs 24 filter-buffer-substring dropped NOPROPS arg
+;;
 (provide 'twiki)
 
 (require 'info)
@@ -692,9 +695,10 @@ lists.  In addition, Twiki does not allow indentation of continuation lines.
 
   ;; Things to do only in the temp buffer that is relevant to twiki format only
   (let ((buf (get-buffer-create (format "*twiki-%s*" (buffer-name))))
-        (text (filter-buffer-substring (point-min) (point-max) nil t))
+        (text (filter-buffer-substring (point-min) (point-max)))
         )
     (save-excursion
+      (set-text-properties 0 (length text) nil text)
       (set-buffer buf)
       (erase-buffer)
       (insert text)

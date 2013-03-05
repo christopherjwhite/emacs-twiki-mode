@@ -105,6 +105,7 @@ usage()
     echo "     preview                   Upload local copy to the server in preview mode"
     echo "     save                      Upload local copy and save as a new version"
     echo "     cl|cleanup                Update to latest and cleanup extraneous files"
+    echo "     search                    Search for topics by name"
     echo ""
     exit 0
 }
@@ -185,7 +186,7 @@ search_topic()
         --data-urlencode "search=$topicfile" \
         --data-urlencode "web=$web" > /tmp/search.html
 
-    open /tmp/search.html
+    grep \"patternSearchResult\" /tmp/search.html | gawk '{ match ($0, "<b>(.*)</b>.*twikiSummary[^>]*>(.*)</div", a); printf( "%-30s %-80.80s...\n", a[1], a[2]); }'
 }
 
 update_topic()
